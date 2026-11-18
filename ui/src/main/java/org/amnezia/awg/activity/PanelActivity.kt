@@ -333,7 +333,13 @@ class PanelActivity : AppCompatActivity() {
             try {
                 val conf = api.fetchConfig(session.server, session.token, config.id)
                 val bitmap = BarcodeEncoder().encodeBitmap(conf, com.google.zxing.BarcodeFormat.QR_CODE, 900, 900)
-                val image = android.widget.ImageView(this@PanelActivity).apply { setImageBitmap(bitmap) }
+                val margin = (24 * resources.displayMetrics.density).toInt()
+                val image =
+                    android.widget.ImageView(this@PanelActivity).apply {
+                        setImageBitmap(bitmap)
+                        setPadding(margin, margin, margin, margin)
+                        setBackgroundColor(android.graphics.Color.WHITE)
+                    }
                 AlertDialog.Builder(this@PanelActivity)
                     .setTitle(config.name)
                     .setView(image)
