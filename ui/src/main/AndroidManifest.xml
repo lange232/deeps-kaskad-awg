@@ -77,6 +77,21 @@
         </activity>
 
         <activity
+            android:name=".activity.SplitTunnelActivity"
+            android:exported="false"
+            android:label="@string/split_tunnel"
+            android:parentActivityName=".activity.MainActivity" />
+        <activity
+            android:name=".activity.PanelActivity"
+            android:exported="false"
+            android:label="@string/panel_title"
+            android:parentActivityName=".activity.MainActivity" />
+        <activity
+            android:name=".activity.PanelRoutingActivity"
+            android:exported="false"
+            android:label="@string/panel_routing"
+            android:parentActivityName=".activity.PanelActivity" />
+        <activity
             android:name=".activity.SettingsActivity"
             android:label="@string/settings"
             android:theme="@style/AppTheme.NoActionBar"

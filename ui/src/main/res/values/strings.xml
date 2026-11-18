@@ -272,4 +272,48 @@
     <string name="import_disclaimer">Ensure that you obtained the configuration file from a trusted source.\n\nConfigurations of the deeps kaskad panel are issued by your provider.\n</string>
     <string name="tunnel_status_connected">Connected</string>
     <string name="tunnel_status_connecting">Connecting…</string>
+    <!-- deeps kaskad panel -->
+    <string name="panel_error_session_expired">Session expired, sign in again</string>
+    <string name="panel_error_rate_limited">Too many attempts, try again later</string>
+    <string name="panel_error_connect">Cannot reach the panel</string>
+    <string name="panel_error_auth">Wrong email or password</string>
+    <string name="panel_error_insecure_server">The panel address must start with https://</string>
+    <!-- deeps kaskad panel: screens -->
+    <string name="panel_title">deeps kaskad panel</string>
+    <string name="panel_sign_in_title">Sign in to the panel</string>
+    <string name="panel_server">Panel address</string>
+    <string name="panel_email">Email</string>
+    <string name="panel_password">Password</string>
+    <string name="panel_sign_in">Sign in</string>
+    <string name="panel_sign_out">Sign out of the panel</string>
+    <string name="panel_configs">Configurations</string>
+    <string name="panel_more">More</string>
+    <string name="panel_routing">Routing</string>
+    <string name="panel_routing_exits">Internet exits</string>
+    <string name="panel_routing_subnets">Subnets</string>
+    <string name="panel_exits_auto">No exits granted, traffic leaves automatically</string>
+    <string name="panel_subnets_empty">No subnets granted</string>
+    <string name="panel_move_up">Up</string>
+    <string name="panel_move_down">Down</string>
+    <string name="panel_routing_saved">Routing updated</string>
+    <string name="panel_config_import">Import into tunnels</string>
+    <string name="panel_config_update">Refresh tunnel</string>
+    <string name="panel_config_share">Share configuration</string>
+    <string name="panel_config_qr">QR code</string>
+    <string name="panel_config_qr_warning">The code contains the private key. Show it only to someone you trust with this configuration.</string>
+    <string name="panel_config_delete">Delete configuration</string>
+    <string name="panel_config_delete_message">The configuration and its keys are removed from the panel. This cannot be undone.</string>
+    <string name="panel_config_imported">Tunnel \"%1$s\" imported</string>
+    <string name="panel_config_updated">Tunnel \"%1$s\" updated</string>
+    <string name="panel_config_refresh_failed">The tunnel config was not refreshed</string>
+    <string name="panel_error_fields">Fill in address, email and password</string>
+    <string name="panel_error_qr">The configuration is too long for a QR code</string>
+    <!-- split tunneling -->
+    <string name="split_tunnel">Split tunneling</string>
+    <string name="split_tunnel_mode">Mode</string>
+    <string name="split_tunnel_exclude">Use all apps except selected</string>
+    <string name="split_tunnel_include">Use only selected apps</string>
+    <string name="split_tunnel_search">Search apps</string>
+    <string name="split_tunnel_saved">Split tunneling saved</string>
+    <string name="split_tunnel_failed">Cannot save split tunneling: %1$s</string>
 </resources>

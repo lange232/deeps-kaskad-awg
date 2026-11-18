@@ -92,6 +92,19 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
+            R.id.menu_action_split_tunnel -> {
+                selectedTunnel?.let { tunnel ->
+                    startActivity(
+                        Intent(this, SplitTunnelActivity::class.java)
+                            .putExtra(SplitTunnelActivity.EXTRA_TUNNEL_NAME, tunnel.name),
+                    )
+                }
+                true
+            }
+            R.id.menu_panel -> {
+                startActivity(Intent(this, PanelActivity::class.java))
+                true
+            }
 
             else -> super.onOptionsItemSelected(item)
         }

@@ -272,4 +272,48 @@
     <string name="import_disclaimer">Убедитесь, что вы получили файл конфигурации в надёжном источнике.\n\nОфициальные сервисы Amnezia доступны только на сайте <a href="https://storage.googleapis.com/amnezia/amnezia.org">amnezia.org</a>\n</string>
     <string name="tunnel_status_connected">Подключено</string>
     <string name="tunnel_status_connecting">Подключение…</string>
+    <!-- deeps kaskad panel -->
+    <string name="panel_error_session_expired">Сессия истекла, войдите заново</string>
+    <string name="panel_error_rate_limited">Слишком много попыток, попробуйте позже</string>
+    <string name="panel_error_connect">Панель недоступна</string>
+    <string name="panel_error_auth">Неверный email или пароль</string>
+    <string name="panel_error_insecure_server">Адрес панели должен начинаться с https://</string>
+    <!-- deeps kaskad panel: screens -->
+    <string name="panel_title">Панель deeps kaskad</string>
+    <string name="panel_sign_in_title">Вход в панель</string>
+    <string name="panel_server">Адрес панели</string>
+    <string name="panel_email">Email</string>
+    <string name="panel_password">Пароль</string>
+    <string name="panel_sign_in">Войти</string>
+    <string name="panel_sign_out">Выйти из панели</string>
+    <string name="panel_configs">Конфигурации</string>
+    <string name="panel_more">Ещё</string>
+    <string name="panel_routing">Маршруты</string>
+    <string name="panel_routing_exits">Интернет-выходы</string>
+    <string name="panel_routing_subnets">Подсети</string>
+    <string name="panel_exits_auto">Выходы не выданы, трафик уходит автоматически</string>
+    <string name="panel_subnets_empty">Подсети не выданы</string>
+    <string name="panel_move_up">Выше</string>
+    <string name="panel_move_down">Ниже</string>
+    <string name="panel_routing_saved">Маршруты обновлены</string>
+    <string name="panel_config_import">Импортировать в туннели</string>
+    <string name="panel_config_update">Обновить туннель</string>
+    <string name="panel_config_share">Поделиться конфигурацией</string>
+    <string name="panel_config_qr">QR-код</string>
+    <string name="panel_config_qr_warning">В коде приватный ключ. Показывайте его только тому, кому доверяете конфигурацию.</string>
+    <string name="panel_config_delete">Удалить конфигурацию</string>
+    <string name="panel_config_delete_message">Конфигурация и её ключи удаляются с панели. Отменить это нельзя.</string>
+    <string name="panel_config_imported">Туннель «%1$s» импортирован</string>
+    <string name="panel_config_updated">Туннель «%1$s» обновлён</string>
+    <string name="panel_config_refresh_failed">Не удалось обновить конфигурацию туннеля</string>
+    <string name="panel_error_fields">Заполните адрес, email и пароль</string>
+    <string name="panel_error_qr">Конфигурация слишком длинная для QR-кода</string>
+    <!-- split tunneling -->
+    <string name="split_tunnel">Сплит-туннелинг</string>
+    <string name="split_tunnel_mode">Режим</string>
+    <string name="split_tunnel_exclude">Все приложения, кроме выбранных</string>
+    <string name="split_tunnel_include">Только выбранные приложения</string>
+    <string name="split_tunnel_search">Поиск приложений</string>
+    <string name="split_tunnel_saved">Сплит-туннелинг сохранён</string>
+    <string name="split_tunnel_failed">Не удалось сохранить сплит-туннелинг: %1$s</string>
 </resources>
