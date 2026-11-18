@@ -5,9 +5,15 @@
 package org.amnezia.awg.activity
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
@@ -59,10 +65,45 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_activity)
         actionBar = supportActionBar
+        actionBar?.title = brandTitle()
+        applyBrandTitleStyling()
         isTwoPaneLayout = findViewById<View?>(R.id.master_detail_wrapper) != null
         supportFragmentManager.addOnBackStackChangedListener(this)
         backPressedCallback = onBackPressedDispatcher.addCallback(this) { handleBackPressed() }
         onBackStackChanged()
+    }
+
+    /**
+     * The wordmark: "DEEPS" in plain white, "KASKAD" in the brand peach, both bold. The launcher
+     * icon uses the same split.
+     */
+    private fun brandTitle(): CharSequence {
+        val text = getString(R.string.app_name)
+        val span = SpannableString(text)
+        val split = text.indexOf(' ')
+        span.setSpan(
+            ForegroundColorSpan(Color.parseColor("#F2F2F2")),
+            0,
+            if (split > 0) split else text.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        if (split in 0 until text.length - 1) {
+            span.setSpan(
+                ForegroundColorSpan(Color.parseColor("#FAB283")),
+                split + 1,
+                text.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        span.setSpan(StyleSpan(Typeface.BOLD), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return span
+    }
+
+    /** Slight letter spacing, the way the wordmark is set in the icon and on the site. */
+    private fun applyBrandTitleStyling() {
+        listOf(androidx.appcompat.R.id.action_bar_title, android.R.id.title)
+            .mapNotNull { id -> findViewById<android.widget.TextView?>(id) }
+            .forEach { view -> view.letterSpacing = 0.08f }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
