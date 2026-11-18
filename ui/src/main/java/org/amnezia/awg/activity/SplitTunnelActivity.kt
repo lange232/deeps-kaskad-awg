@@ -158,7 +158,9 @@ class SplitTunnelActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val app = shown[position]
             holder.item.appLabel.text = app.label
-            holder.item.appIcon.setImageDrawable(packageManager.getApplicationIcon(app.info))
+            holder.item.appIcon.setImageDrawable(
+                runCatching { packageManager.getApplicationIcon(app.info) }.getOrNull(),
+            )
             holder.item.appChecked.setOnCheckedChangeListener(null)
             holder.item.appChecked.isChecked = selected.contains(app.packageName)
             holder.item.appChecked.setOnCheckedChangeListener { _, checked ->

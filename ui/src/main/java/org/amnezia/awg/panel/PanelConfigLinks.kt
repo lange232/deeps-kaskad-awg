@@ -63,6 +63,6 @@ class PanelConfigLinks(context: Context) {
     private companion object {
         const val PREFS_NAME = "panel_links"
         const val KEY_PREFIX = "config_"
-        const val SEPARATOR = "\u0000"
+        const val SEPARATOR = "\t"
     }
 }
