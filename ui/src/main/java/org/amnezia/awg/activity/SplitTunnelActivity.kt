@@ -44,14 +44,14 @@ class SplitTunnelActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivitySplitTunnelBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationOnClickListener { finish() }
 
         tunnelName = intent.getStringExtra(EXTRA_TUNNEL_NAME).orEmpty()
         if (tunnelName.isEmpty()) {
             finish()
             return
         }
-        supportActionBar?.title = tunnelName
+        binding.toolbar.title = tunnelName
 
         val selection = SplitTunnel.load(applicationContext, tunnelName)
         selected.addAll(selection.packages)

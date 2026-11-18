@@ -56,7 +56,7 @@ class PanelActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityPanelBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationOnClickListener { finish() }
 
         api = PanelApi(applicationContext)
         sessionStore = PanelSessionStore(applicationContext)
@@ -290,12 +290,23 @@ class PanelActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The backend accepts `[a-zA-Z0-9_=+.-]{1,15}`, while a panel configuration name may be 32
+     * characters long, so the tunnel name is sanitized and shortened; the full name stays on the
+     * panel side.
+     */
     private suspend fun uniqueTunnelName(base: String): String {
         val tunnels = Application.getTunnelManager().getTunnels()
-        if (tunnels[base] == null) return base
+        val sanitized = base.replace(Regex("[^a-zA-Z0-9_=+.-]"), "-").trim('-').ifEmpty { "panel" }
+        val stem = sanitized.take(TUNNEL_NAME_MAX)
+        if (tunnels[stem] == null) return stem
         var index = 2
-        while (tunnels["$base-$index"] != null) index++
-        return "$base-$index"
+        while (true) {
+            val suffix = "-$index"
+            val candidate = stem.take(TUNNEL_NAME_MAX - suffix.length) + suffix
+            if (tunnels[candidate] == null) return candidate
+            index++
+        }
     }
 
     private fun shareConfig(config: PanelConfig) {
@@ -384,5 +395,6 @@ class PanelActivity : AppCompatActivity() {
 
     private companion object {
         const val DEFAULT_SERVER = "https://omega.deffhost.ru:8080"
+        const val TUNNEL_NAME_MAX = 15
     }
 }

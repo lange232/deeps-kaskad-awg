@@ -53,8 +53,9 @@ class PanelRoutingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityPanelRoutingBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = intent.getStringExtra(EXTRA_CONFIG_NAME) ?: getString(R.string.panel_routing)
+        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.toolbar.title =
+            intent.getStringExtra(EXTRA_CONFIG_NAME) ?: getString(R.string.panel_routing)
 
         configId = intent.getIntExtra(EXTRA_CONFIG_ID, 0)
         api = PanelApi(applicationContext)

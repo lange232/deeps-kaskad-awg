@@ -16,7 +16,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
-import com.google.android.material.color.DynamicColors
 import org.amnezia.awg.backend.Backend
 import org.amnezia.awg.backend.GoBackend
 import org.amnezia.awg.backend.AwgQuickBackend
@@ -88,7 +87,6 @@ class Application : android.app.Application() {
     override fun onCreate() {
         Log.i(TAG, USER_AGENT)
         super.onCreate()
-        DynamicColors.applyToActivitiesIfAvailable(this)
         rootShell = RootShell(applicationContext)
         toolsInstaller = ToolsInstaller(applicationContext, rootShell)
         preferencesDataStore = PreferenceDataStoreFactory.create { applicationContext.preferencesDataStoreFile("settings") }
