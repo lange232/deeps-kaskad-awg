@@ -316,4 +316,5 @@
     <string name="split_tunnel_search">Search apps</string>
     <string name="split_tunnel_saved">Split tunneling saved</string>
     <string name="split_tunnel_failed">Cannot save split tunneling: %1$s</string>
+    <string name="reorder_tunnel">Reorder tunnel</string>
 </resources>

@@ -6,6 +6,18 @@
 package org.amnezia.awg.model
 
 object TunnelComparator : Comparator<String> {
+
+    /**
+     * Ranks of the user's own order; tunnels that are not ranked yet (freshly created ones) sort
+     * after the ranked ones by the natural order of their names.
+     */
+    @Volatile
+    private var ranks: Map<String, Int> = emptyMap()
+
+    fun updateRanks(newRanks: Map<String, Int>) {
+        ranks = newRanks
+    }
+
     private class NaturalSortString(originalString: String) {
         class NaturalSortToken(val maybeString: String?, val maybeNumber: Int?) : Comparable<NaturalSortToken> {
             override fun compareTo(other: NaturalSortToken): Int {
@@ -46,6 +58,11 @@ object TunnelComparator : Comparator<String> {
     override fun compare(a: String, b: String): Int {
         if (a == b)
             return 0
+        val rankA = ranks[a]
+        val rankB = ranks[b]
+        if (rankA != null && rankB != null) return rankA.compareTo(rankB)
+        if (rankA != null) return -1
+        if (rankB != null) return 1
         val na = NaturalSortString(a)
         val nb = NaturalSortString(b)
         for (i in 0 until nb.tokens.size) {

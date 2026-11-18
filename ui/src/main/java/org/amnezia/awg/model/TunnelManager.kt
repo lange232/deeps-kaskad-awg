@@ -23,6 +23,7 @@ import org.amnezia.awg.backend.Tunnel
 import org.amnezia.awg.configStore.ConfigStore
 import org.amnezia.awg.databinding.ObservableSortedKeyedArrayList
 import org.amnezia.awg.util.ErrorMessages
+import org.amnezia.awg.util.TunnelOrder
 import org.amnezia.awg.util.UserKnobs
 import org.amnezia.awg.util.applicationScope
 import org.amnezia.awg.config.Config
@@ -57,7 +58,30 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
             throw IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name))
         if (tunnelMap.containsKey(name))
             throw IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name))
-        addToList(name, withContext(Dispatchers.IO) { configStore.create(name, config!!) }, Tunnel.State.DOWN)
+        val tunnel =
+            addToList(
+                name,
+                withContext(Dispatchers.IO) { configStore.create(name, config!!) },
+                Tunnel.State.DOWN,
+            )
+        TunnelOrder.append(context, name)
+        TunnelComparator.updateRanks(TunnelOrder.ranks(context))
+        tunnel
+    }
+
+    /**
+     * Moves a tunnel to another position of the main list and persists the result. The list keeps
+     * itself sorted, so the new order is expressed as fresh ranks and the collection is rebuilt.
+     */
+    fun reorder(from: Int, to: Int) {
+        if (from == to || from !in tunnelMap.indices || to !in tunnelMap.indices) return
+        val names = tunnelMap.map { it.name }.toMutableList()
+        names.add(to, names.removeAt(from))
+        TunnelOrder.save(context, names)
+        TunnelComparator.updateRanks(names.withIndex().associate { (index, name) -> name to index })
+        val snapshot = tunnelMap.toList()
+        tunnelMap.clear()
+        tunnelMap.addAll(snapshot)
     }
 
     suspend fun delete(tunnel: ObservableTunnel) = withContext(Dispatchers.Main.immediate) {
@@ -84,6 +108,8 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
                 lastUsedTunnel = tunnel
             throw e
         }
+        TunnelOrder.remove(context, tunnel.name)
+        TunnelComparator.updateRanks(TunnelOrder.ranks(context))
     }
 
     @get:Bindable
@@ -102,6 +128,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
     fun onCreate() {
         applicationScope.launch {
             try {
+                TunnelComparator.updateRanks(TunnelOrder.ranks(context))
                 onTunnelsLoaded(withContext(Dispatchers.IO) { configStore.enumerate() }, withContext(Dispatchers.IO) { getBackend().runningTunnelNames })
                 setupStatusCallbacks()
             } catch (e: Throwable) {

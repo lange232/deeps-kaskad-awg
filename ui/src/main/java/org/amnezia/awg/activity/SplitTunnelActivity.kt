@@ -109,15 +109,21 @@ class SplitTunnelActivity : AppCompatActivity() {
     }
 
     private fun filter(query: String) {
-        shown.clear()
-        shown.addAll(
+        val matching =
             if (query.isBlank()) {
                 allApps
             } else {
                 allApps.filter {
                     it.label.contains(query, true) || it.packageName.contains(query, true)
                 }
-            },
+            }
+        shown.clear()
+        // Selected apps stay on top, so the choice is visible without scrolling.
+        shown.addAll(
+            matching.sortedWith(
+                compareByDescending<AppEntry> { selected.contains(it.packageName) }
+                    .thenBy { it.label.lowercase() },
+            ),
         )
         adapter.notifyDataSetChanged()
     }
@@ -165,6 +171,7 @@ class SplitTunnelActivity : AppCompatActivity() {
             holder.item.appChecked.isChecked = selected.contains(app.packageName)
             holder.item.appChecked.setOnCheckedChangeListener { _, checked ->
                 if (checked) selected.add(app.packageName) else selected.remove(app.packageName)
+                filter(binding.search.text?.toString().orEmpty())
             }
             holder.item.root.setOnClickListener {
                 holder.item.appChecked.isChecked = !holder.item.appChecked.isChecked

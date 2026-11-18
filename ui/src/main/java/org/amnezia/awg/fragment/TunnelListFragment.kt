@@ -9,6 +9,7 @@ import android.content.res.Resources
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -22,6 +23,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import com.google.zxing.qrcode.QRCodeReader
 import com.journeyapps.barcodescanner.ScanContract
@@ -47,6 +50,7 @@ import kotlinx.coroutines.launch
  */
 class TunnelListFragment : BaseFragment() {
     private val actionModeListener = ActionModeListener()
+    private var dragHelper: ItemTouchHelper? = null
     private var actionMode: ActionMode? = null
     private var backPressedCallback: OnBackPressedCallback? = null
     private var binding: TunnelListFragmentBinding? = null
@@ -150,6 +154,51 @@ class TunnelListFragment : BaseFragment() {
         }
     }
 
+    /**
+     * Reordering by dragging the grip at the start of a row. Long press is already taken by
+     * multi-selection, so the drag starts from the handle only.
+     */
+    private fun attachDragToReorder() {
+        val list = binding?.tunnelList ?: return
+        if (dragHelper != null) return
+        val callback =
+            object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+                override fun isLongPressDragEnabled() = false
+
+                override fun onMove(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder,
+                ): Boolean {
+                    val from = viewHolder.adapterPosition
+                    val to = target.adapterPosition
+                    if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) {
+                        return false
+                    }
+                    Application.getTunnelManager().reorder(from, to)
+                    return true
+                }
+
+                override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+
+                override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                        viewHolder?.itemView?.alpha = 0.6f
+                    }
+                }
+
+                override fun clearView(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                ) {
+                    super.clearView(recyclerView, viewHolder)
+                    viewHolder.itemView.alpha = 1f
+                }
+            }
+        dragHelper = ItemTouchHelper(callback).also { it.attachToRecyclerView(list) }
+    }
+
     private fun onTunnelDeletionFinished(count: Int, throwable: Throwable?) {
         val message: String
         val ctx = activity ?: Application.get()
@@ -168,6 +217,7 @@ class TunnelListFragment : BaseFragment() {
         binding ?: return
         binding!!.fragment = this
         lifecycleScope.launch { binding!!.tunnels = Application.getTunnelManager().getTunnels() }
+        attachDragToReorder()
         binding!!.rowConfigurationHandler = object : RowConfigurationHandler<TunnelListItemBinding, ObservableTunnel> {
             override fun onConfigureRow(binding: TunnelListItemBinding, item: ObservableTunnel, position: Int) {
                 binding.fragment = this@TunnelListFragment
@@ -181,6 +231,17 @@ class TunnelListFragment : BaseFragment() {
                 binding.root.setOnLongClickListener {
                     actionModeListener.toggleItemChecked(position)
                     true
+                }
+                binding.dragHandle.setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        val recycler = binding.root.parent as? RecyclerView
+                        recycler
+                            ?.findContainingViewHolder(binding.root)
+                            ?.let { holder -> dragHelper?.startDrag(holder) }
+                        true
+                    } else {
+                        false
+                    }
                 }
                 if (actionMode != null)
                     (binding.root as MultiselectableRelativeLayout).setMultiSelected(actionModeListener.checkedItems.contains(position))
