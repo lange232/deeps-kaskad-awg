@@ -7,9 +7,4 @@
         android:icon="@drawable/ic_action_edit"
         android:title="@string/edit"
         app:showAsAction="always" />
-    <item
-        android:id="@+id/menu_action_split_tunnel"
-        android:icon="@drawable/ic_action_panel"
-        android:title="@string/split_tunnel"
-        app:showAsAction="ifRoom" />
 </menu>

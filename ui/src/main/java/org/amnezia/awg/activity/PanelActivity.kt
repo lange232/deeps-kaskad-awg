@@ -72,7 +72,6 @@ class PanelActivity : AppCompatActivity() {
         val session = sessionStore.session
         if (session == null) {
             showSignedOut()
-            binding.serverInput.setText(sessionStore.lastServer ?: DEFAULT_SERVER)
             binding.emailInput.setText(sessionStore.lastEmail)
         } else {
             binding.serverInput.setText(session.server)
@@ -134,6 +133,9 @@ class PanelActivity : AppCompatActivity() {
         if (session != null) lifecycleScope.launch { api.logout(session.server, session.token) }
         configs.clear()
         adapter.notifyDataSetChanged()
+        // The address is typed by the user, never carried over from a previous session.
+        binding.serverInput.setText("")
+        binding.passwordInput.text?.clear()
         showSignedOut()
     }
 
@@ -400,7 +402,6 @@ class PanelActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val DEFAULT_SERVER = "https://omega.deffhost.ru:8080"
         const val TUNNEL_NAME_MAX = 15
     }
 }

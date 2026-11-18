@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:tint="?attr/colorControlNormal"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- One stream that forks into two: split tunneling. -->
+    <path
+        android:pathData="M12,21.5L12,12M12,12L5.4,5.4M12,12L18.6,5.4"
+        android:strokeColor="@android:color/white"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M2.6,2.6L10.2,4.6L5.2,9.6Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M21.4,2.6L13.8,4.6L18.8,9.6Z" />
+</vector>

@@ -9,6 +9,13 @@
         android:title="@string/settings"
         app:showAsAction="always" />
     <item
+        android:id="@+id/menu_action_split_tunnel"
+        android:icon="@drawable/ic_action_split"
+        android:orderInCategory="10"
+        android:title="@string/split_tunnel"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/menu_panel"
         android:icon="@drawable/ic_action_panel"
         android:orderInCategory="900"

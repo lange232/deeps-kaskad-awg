@@ -70,6 +70,15 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        // Split tunneling is per tunnel, so it only makes sense with a tunnel on screen.
+        val tunnelSelected = selectedTunnel != null
+        menu.findItem(R.id.menu_action_split_tunnel)?.isVisible = tunnelSelected
+        // The panel is reached from the tunnel list; inside a tunnel it would only add noise.
+        menu.findItem(R.id.menu_panel)?.isVisible = !tunnelSelected
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> {
@@ -114,6 +123,7 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
         oldTunnel: ObservableTunnel?,
         newTunnel: ObservableTunnel?
     ): Boolean {
+        invalidateOptionsMenu()
         val fragmentManager = supportFragmentManager
         if (fragmentManager.isStateSaved) {
             return false
