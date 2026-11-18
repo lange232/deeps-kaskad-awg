@@ -421,7 +421,8 @@ class PanelActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val config = configs[position]
             holder.item.configName.text = config.name
-            holder.item.configIp.text = config.ip
+            holder.item.configIp.text =
+                if (config.remoteIp.isBlank()) config.ip else "${config.ip} • ${config.remoteIp}"
             holder.item.configEnabled.setOnCheckedChangeListener(null)
             holder.item.configEnabled.isChecked = config.enabled
             holder.item.configEnabled.setOnCheckedChangeListener { _, checked ->

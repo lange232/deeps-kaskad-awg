@@ -29,6 +29,8 @@ data class PanelConfig(
     /** Empty for configurations created before the panel had a separate device id. */
     val deviceId: String,
     val ip: String,
+    /** The address the peer connects from, as seen by the server; empty until it handshakes. */
+    val remoteIp: String,
     val enabled: Boolean,
     val internet: Boolean,
     val exits: List<String>,
@@ -321,6 +323,7 @@ class PanelApi(private val context: Context) {
             name = json.getString("name"),
             deviceId = json.optString("device_id"),
             ip = json.optString("ip"),
+            remoteIp = json.optString("remote_ip").substringBefore(':'),
             enabled = json.optBoolean("enabled", false),
             internet = json.optBoolean("internet", false),
             exits = json.optJSONArray("exits")?.let { array ->
