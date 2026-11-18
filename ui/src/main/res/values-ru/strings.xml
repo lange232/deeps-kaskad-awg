@@ -317,4 +317,7 @@
     <string name="split_tunnel_saved">Сплит-туннелинг сохранён</string>
     <string name="split_tunnel_failed">Не удалось сохранить сплит-туннелинг: %1$s</string>
     <string name="reorder_tunnel">Перетащить туннель</string>
+    <string name="panel_traffic">↓ %1$s · ↑ %2$s</string>
+    <string name="panel_handshake_never">нет handshake</string>
+    <string name="panel_handshake_ago">handshake %1$s назад</string>
 </resources>

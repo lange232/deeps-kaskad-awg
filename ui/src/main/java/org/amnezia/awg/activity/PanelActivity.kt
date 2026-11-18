@@ -18,6 +18,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
+import java.util.Locale
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.amnezia.awg.Application
 import org.amnezia.awg.R
@@ -49,6 +53,7 @@ class PanelActivity : AppCompatActivity() {
     private lateinit var device: PanelDevice
     private lateinit var links: PanelConfigLinks
 
+    private var refreshJob: Job? = null
     private val configs = mutableListOf<PanelConfig>()
     private val adapter = ConfigAdapter()
 
@@ -88,7 +93,35 @@ class PanelActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (sessionStore.session != null) loadConfigs()
+        if (sessionStore.session != null) {
+            loadConfigs()
+            startTrafficRefresh()
+        }
+    }
+
+    override fun onPause() {
+        refreshJob?.cancel()
+        super.onPause()
+    }
+
+    /** Traffic counters live on the panel, so the list is refreshed while the screen is visible. */
+    private fun startTrafficRefresh() {
+        refreshJob?.cancel()
+        refreshJob =
+            lifecycleScope.launch {
+                while (isActive) {
+                    delay(TRAFFIC_REFRESH_MS)
+                    val session = sessionStore.session ?: return@launch
+                    try {
+                        val loaded = api.fetchConfigs(session.server, session.token)
+                        configs.clear()
+                        configs.addAll(loaded)
+                        adapter.notifyDataSetChanged()
+                    } catch (e: Exception) {
+                        // A silent poll: a failed refresh must not interrupt the screen.
+                    }
+                }
+            }
     }
 
     // ------------------------------------------------------------------ session
@@ -394,6 +427,13 @@ class PanelActivity : AppCompatActivity() {
             holder.item.configEnabled.setOnCheckedChangeListener { _, checked ->
                 toggleConfig(config, checked)
             }
+            holder.item.configTraffic.text =
+                getString(
+                    R.string.panel_traffic,
+                    formatBytes(config.rx),
+                    formatBytes(config.tx),
+                )
+            holder.item.configHandshake.text = formatHandshake(config.handshake)
             holder.item.configMore.setOnClickListener { showActions(config) }
             holder.item.root.setOnClickListener { showActions(config) }
         }
@@ -401,7 +441,33 @@ class PanelActivity : AppCompatActivity() {
         override fun getItemCount(): Int = configs.size
     }
 
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val units = arrayOf("KiB", "MiB", "GiB", "TiB")
+        var value = bytes.toDouble() / 1024
+        var unit = 0
+        while (value >= 1024 && unit < units.lastIndex) {
+            value /= 1024
+            unit++
+        }
+        return String.format(Locale.getDefault(), "%.1f %s", value, units[unit])
+    }
+
+    private fun formatHandshake(epochSeconds: Long): String {
+        if (epochSeconds <= 0) return getString(R.string.panel_handshake_never)
+        val age = (System.currentTimeMillis() / 1000 - epochSeconds).coerceAtLeast(0)
+        val text =
+            when {
+                age < 60 -> "$age s"
+                age < 3600 -> "${age / 60} min"
+                age < 86400 -> "${age / 3600} h"
+                else -> "${age / 86400} d"
+            }
+        return getString(R.string.panel_handshake_ago, text)
+    }
+
     private companion object {
+        const val TRAFFIC_REFRESH_MS = 5_000L
         const val TUNNEL_NAME_MAX = 15
     }
 }
