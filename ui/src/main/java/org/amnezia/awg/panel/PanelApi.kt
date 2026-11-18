@@ -57,6 +57,11 @@ data class PanelSubnet(
     val enabled: Boolean,
 )
 
+/** One point of the traffic history: deltas for the interval, download and upload in bytes. */
+data class PanelTrafficPoint(val ts: Long, val rx: Long, val tx: Long)
+
+data class PanelTraffic(val stepSeconds: Int, val points: List<PanelTrafficPoint>)
+
 data class PanelLoginResult(
     val token: String,
     val email: String,
@@ -201,6 +206,39 @@ class PanelApi(private val context: Context) {
             }
             execute(server, "/api/me/subnets", "POST", token, form)
         }
+    }
+
+    /**
+     * Traffic history of one configuration. Null when the panel has no such endpoint or no samples
+     * yet, so the statistics screen can fall back to the current totals instead of failing.
+     */
+    suspend fun fetchTraffic(
+        server: String,
+        token: String,
+        configId: Int,
+        hours: Int,
+    ): PanelTraffic? = withContext(Dispatchers.IO) {
+        val body =
+            try {
+                execute(server, "/api/me/configs/$configId/traffic?hours=$hours", "GET", token)
+            } catch (e: PanelApiException) {
+                if (e.status == 404) return@withContext null
+                throw e
+            }
+        val json = JSONObject(body)
+        val points = json.optJSONArray("points") ?: JSONArray()
+        PanelTraffic(
+            stepSeconds = json.optInt("step_seconds", 300),
+            points =
+                (0 until points.length()).map { index ->
+                    val point = points.getJSONObject(index)
+                    PanelTrafficPoint(
+                        ts = point.optLong("ts"),
+                        rx = point.optLong("rx"),
+                        tx = point.optLong("tx"),
+                    )
+                },
+        )
     }
 
     /** Best-effort token revocation; the result does not matter for the caller. */

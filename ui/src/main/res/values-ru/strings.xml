@@ -320,4 +320,14 @@
     <string name="panel_traffic">↓ %1$s · ↑ %2$s</string>
     <string name="panel_handshake_never">нет handshake</string>
     <string name="panel_handshake_ago">handshake %1$s назад</string>
+    <!-- configuration statistics -->
+    <string name="panel_stats">Статистика</string>
+    <string name="panel_stats_totals">Всего трафика</string>
+    <string name="panel_stats_history">История</string>
+    <string name="panel_stats_legend">↓ скачано · ↑ отдано</string>
+    <string name="panel_stats_no_history">Истории пока нет</string>
+    <string name="panel_stats_range_24">24 ч</string>
+    <string name="panel_stats_range_7d">7 дней</string>
+    <string name="panel_stats_state_on">Включена</string>
+    <string name="panel_stats_state_off">Выключена</string>
 </resources>

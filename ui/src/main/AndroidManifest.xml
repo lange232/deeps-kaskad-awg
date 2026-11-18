@@ -83,6 +83,12 @@
             android:label="@string/split_tunnel"
             android:parentActivityName=".activity.MainActivity" />
         <activity
+            android:name=".activity.PanelStatsActivity"
+            android:exported="false"
+            android:label="@string/panel_stats"
+            android:parentActivityName=".activity.PanelActivity"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
             android:name=".activity.PanelActivity"
             android:theme="@style/AppTheme.NoActionBar"
             android:exported="false"

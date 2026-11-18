@@ -320,4 +320,14 @@
     <string name="panel_traffic">↓ %1$s · ↑ %2$s</string>
     <string name="panel_handshake_never">no handshake</string>
     <string name="panel_handshake_ago">handshake %1$s ago</string>
+    <!-- configuration statistics -->
+    <string name="panel_stats">Statistics</string>
+    <string name="panel_stats_totals">Total traffic</string>
+    <string name="panel_stats_history">History</string>
+    <string name="panel_stats_legend">↓ download · ↑ upload</string>
+    <string name="panel_stats_no_history">No history yet</string>
+    <string name="panel_stats_range_24">24 h</string>
+    <string name="panel_stats_range_7d">7 days</string>
+    <string name="panel_stats_state_on">Enabled</string>
+    <string name="panel_stats_state_off">Disabled</string>
 </resources>

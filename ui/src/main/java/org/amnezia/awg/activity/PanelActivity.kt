@@ -240,6 +240,7 @@ class PanelActivity : AppCompatActivity() {
         val items =
             arrayOf(
                 getString(R.string.panel_routing),
+                getString(R.string.panel_stats),
                 getString(if (linked) R.string.panel_config_update else R.string.panel_config_import),
                 getString(R.string.panel_config_share),
                 getString(R.string.panel_config_qr),
@@ -255,10 +256,15 @@ class PanelActivity : AppCompatActivity() {
                                 .putExtra(PanelRoutingActivity.EXTRA_CONFIG_ID, config.id)
                                 .putExtra(PanelRoutingActivity.EXTRA_CONFIG_NAME, config.name),
                         )
-                    1 -> importOrUpdate(config)
-                    2 -> shareConfig(config)
-                    3 -> showQr(config)
-                    4 -> confirmDelete(config)
+                    1 ->
+                        startActivity(
+                            Intent(this, PanelStatsActivity::class.java)
+                                .putExtra(PanelStatsActivity.EXTRA_CONFIG_ID, config.id),
+                        )
+                    2 -> importOrUpdate(config)
+                    3 -> shareConfig(config)
+                    4 -> showQr(config)
+                    5 -> confirmDelete(config)
                 }
             }
             .show()
@@ -431,8 +437,8 @@ class PanelActivity : AppCompatActivity() {
             holder.item.configTraffic.text =
                 getString(
                     R.string.panel_traffic,
-                    formatBytes(config.rx),
                     formatBytes(config.tx),
+                    formatBytes(config.rx),
                 )
             holder.item.configHandshake.text = formatHandshake(config.handshake)
             holder.item.configMore.setOnClickListener { showActions(config) }
