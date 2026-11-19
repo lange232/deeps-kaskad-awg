@@ -101,6 +101,14 @@
                     android:text="@string/panel_stats_range_7d" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
+            <ProgressBar
+                android:id="@+id/stats_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="12dp"
+                android:visibility="gone" />
+
             <org.amnezia.awg.widget.TrafficChartView
                 android:id="@+id/stats_chart"
                 android:layout_width="match_parent"

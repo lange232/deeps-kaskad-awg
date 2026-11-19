@@ -43,10 +43,12 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
 
     private var points: List<PanelTrafficPoint> = emptyList()
     private var spanHours: Int = 24
+    private var stepSeconds: Int = 300
 
-    fun setPoints(newPoints: List<PanelTrafficPoint>, hours: Int = 24) {
+    fun setPoints(newPoints: List<PanelTrafficPoint>, hours: Int = 24, step: Int = 300) {
         points = newPoints
         spanHours = hours
+        stepSeconds = step.coerceAtLeast(1)
         invalidate()
     }
 
@@ -63,7 +65,7 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
             return
         }
 
-        val buckets = bucketize(points, MAX_BARS)
+        val buckets = bucketize(points, spanHours, stepSeconds)
         val maxValue = niceCeiling(buckets.maxOfOrNull { max(it.download, it.upload) } ?: 1L)
         val baseline = 8f + chartHeight
 
@@ -86,6 +88,7 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
             val center = padLeft + slot * index + slot / 2f
             val downloadHeight = chartHeight * bucket.download / maxValue.toFloat()
             val uploadHeight = chartHeight * bucket.upload / maxValue.toFloat()
+            if (downloadHeight <= 0f && uploadHeight <= 0f) return@forEachIndexed
             barRect.set(
                 center - barWidth - 0.5f,
                 baseline - downloadHeight,
@@ -98,8 +101,8 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
         }
 
         // Time labels at both ends of the range; a long range also needs the date.
-        val first = points.first().ts
-        val last = points.last().ts
+        val first = System.currentTimeMillis() / 1000 - spanHours * 3600L
+        val last = maxOf(points.maxOf { it.ts }, System.currentTimeMillis() / 1000)
         canvas.drawText(
             if (spanHours >= 24) dateFormat.format(Date(first * 1000)) else timeFormat.format(Date(first * 1000)),
             padLeft,
@@ -117,19 +120,32 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
 
     private class Bucket(val start: Long, var download: Long, var upload: Long)
 
-    /** Merges dense sample series into at most [maxBars] columns, keeping totals. */
-    private fun bucketize(source: List<PanelTrafficPoint>, maxBars: Int): List<Bucket> {
-        if (source.size <= maxBars) {
-            return source.map { Bucket(it.ts, it.tx, it.rx) }
+    /**
+     * Lays the samples onto a fixed grid of the requested range, so a sparse series is drawn where
+     * it actually happened instead of being stretched across the whole chart. Dense series are
+     * merged into at most [MAX_BARS] columns.
+     */
+    private fun bucketize(
+        source: List<PanelTrafficPoint>,
+        hours: Int,
+        stepSeconds: Int,
+    ): List<Bucket> {
+        val rangeSeconds = hours.coerceAtLeast(1) * 3600L
+        val nativeBuckets = (rangeSeconds / stepSeconds).toInt().coerceAtLeast(1)
+        val bucketCount = minOf(MAX_BARS, nativeBuckets)
+        val bucketSeconds = rangeSeconds / bucketCount
+        val lastPoint = source.lastOrNull()?.ts ?: (System.currentTimeMillis() / 1000)
+        val end = maxOf(lastPoint, System.currentTimeMillis() / 1000)
+        val start = end - rangeSeconds
+        val buckets = List(bucketCount) { index -> Bucket(start + bucketSeconds * index, 0L, 0L) }
+        source.forEach { point ->
+            val index = ((point.ts - start) / bucketSeconds).toInt()
+            if (index in buckets.indices) {
+                buckets[index].download += point.tx
+                buckets[index].upload += point.rx
+            }
         }
-        val step = (source.size + maxBars - 1) / maxBars
-        return source.chunked(step).map { chunk ->
-            Bucket(
-                start = chunk.first().ts,
-                download = chunk.sumOf { it.tx },
-                upload = chunk.sumOf { it.rx },
-            )
-        }
+        return buckets
     }
 
     /** Rounds a value up to a clean number of KiB, MiB or GiB, so the grid reads well. */

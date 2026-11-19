@@ -8,6 +8,7 @@ package org.amnezia.awg.activity
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -69,6 +70,7 @@ class PanelStatsActivity : AppCompatActivity() {
 
     private fun load() {
         val session = sessionStore.session ?: return finish()
+        binding.statsProgress.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
                 val config =
@@ -76,11 +78,13 @@ class PanelStatsActivity : AppCompatActivity() {
                 config?.let(::showSnapshot)
                 val traffic =
                     api.fetchTraffic(session.server, session.token, configId, hours)
-                binding.statsChart.setPoints(traffic?.points.orEmpty(), hours)
+                binding.statsChart.setPoints(traffic?.points.orEmpty(), hours, traffic?.stepSeconds ?: 300)
             } catch (e: PanelApiException) {
                 toast(e.message ?: getString(R.string.panel_error_connect))
             } catch (e: Exception) {
                 toast(getString(R.string.panel_error_connect))
+            } finally {
+                binding.statsProgress.visibility = View.GONE
             }
         }
     }
