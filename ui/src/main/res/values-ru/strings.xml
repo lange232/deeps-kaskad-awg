@@ -295,7 +295,11 @@
     <string name="panel_subnets_empty">Подсети не выданы</string>
     <string name="panel_move_up">Выше</string>
     <string name="panel_move_down">Ниже</string>
-    <string name="panel_routing_saved">Маршруты обновлены</string>
+    <string name="panel_routing_saved">Маршруты сохранены на панели</string>
+    <string name="panel_routing_applied">Маршруты сохранены и применены к этому туннелю</string>
+    <string name="panel_routing_partial">Подсети сохранены, но не удалось сохранить порядок выходов: %1$s</string>
+    <string name="panel_routing_retry_apply">Повторить применение маршрутов</string>
+    <string name="split_tunnel_select_at_least_one">Выберите хотя бы одно приложение для этого режима</string>
     <string name="panel_config_import">Импортировать в туннели</string>
     <string name="panel_config_update">Обновить туннель</string>
     <string name="panel_config_share">Поделиться конфигурацией</string>
@@ -305,7 +309,7 @@
     <string name="panel_config_delete_message">Конфигурация и её ключи удаляются с панели. Отменить это нельзя.</string>
     <string name="panel_config_imported">Туннель «%1$s» импортирован</string>
     <string name="panel_config_updated">Туннель «%1$s» обновлён</string>
-    <string name="panel_config_refresh_failed">Не удалось обновить конфигурацию туннеля</string>
+    <string name="panel_config_refresh_failed">Маршруты сохранены на панели, но не применены к этому туннелю</string>
     <string name="panel_error_fields">Заполните адрес, email и пароль</string>
     <string name="panel_error_qr">Конфигурация слишком длинная для QR-кода</string>
     <!-- split tunneling -->

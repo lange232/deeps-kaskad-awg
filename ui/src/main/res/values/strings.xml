@@ -295,7 +295,11 @@
     <string name="panel_subnets_empty">No subnets granted</string>
     <string name="panel_move_up">Up</string>
     <string name="panel_move_down">Down</string>
-    <string name="panel_routing_saved">Routing updated</string>
+    <string name="panel_routing_saved">Routes saved on the panel</string>
+    <string name="panel_routing_applied">Routes saved and applied to this tunnel</string>
+    <string name="panel_routing_partial">Subnets saved, but exit order was not saved: %1$s</string>
+    <string name="panel_routing_retry_apply">Retry applying routes</string>
+    <string name="split_tunnel_select_at_least_one">Select at least one app for this mode</string>
     <string name="panel_config_import">Import into tunnels</string>
     <string name="panel_config_update">Refresh tunnel</string>
     <string name="panel_config_share">Share configuration</string>
@@ -305,7 +309,7 @@
     <string name="panel_config_delete_message">The configuration and its keys are removed from the panel. This cannot be undone.</string>
     <string name="panel_config_imported">Tunnel \"%1$s\" imported</string>
     <string name="panel_config_updated">Tunnel \"%1$s\" updated</string>
-    <string name="panel_config_refresh_failed">The tunnel config was not refreshed</string>
+    <string name="panel_config_refresh_failed">Routes were saved on the panel but could not be applied to this tunnel</string>
     <string name="panel_error_fields">Fill in address, email and password</string>
     <string name="panel_error_qr">The configuration is too long for a QR code</string>
     <!-- split tunneling -->

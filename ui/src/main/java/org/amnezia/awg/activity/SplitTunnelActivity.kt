@@ -16,9 +16,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.amnezia.awg.Application
 import org.amnezia.awg.R
 import org.amnezia.awg.databinding.ActivitySplitTunnelBinding
 import org.amnezia.awg.databinding.ItemSplitAppBinding
@@ -53,11 +55,6 @@ class SplitTunnelActivity : AppCompatActivity() {
         }
         binding.toolbar.title = tunnelName
 
-        val selection = SplitTunnel.load(applicationContext, tunnelName)
-        selected.addAll(selection.packages)
-        binding.modeInclude.isChecked = selection.onlySelected
-        binding.modeExclude.isChecked = !selection.onlySelected
-
         binding.appList.layoutManager = LinearLayoutManager(this)
         binding.appList.adapter = adapter
         binding.search.addTextChangedListener(
@@ -72,6 +69,7 @@ class SplitTunnelActivity : AppCompatActivity() {
             },
         )
         binding.saveButton.setOnClickListener { save() }
+        binding.saveButton.isEnabled = false
         loadApps()
     }
 
@@ -83,6 +81,19 @@ class SplitTunnelActivity : AppCompatActivity() {
     private fun loadApps() {
         binding.progress.visibility = View.VISIBLE
         lifecycleScope.launch {
+            try {
+                val tunnel = checkNotNull(Application.getTunnelManager().getTunnels()[tunnelName])
+                val selection = SplitTunnel.selectionOf(tunnel.getConfigAsync())
+                selected.addAll(selection.packages)
+                binding.modeInclude.isChecked = selection.onlySelected
+                binding.modeExclude.isChecked = !selection.onlySelected
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showFailure(e)
+                finish()
+                return@launch
+            }
             val apps =
                 withContext(Dispatchers.IO) {
                     val manager = packageManager
@@ -105,6 +116,7 @@ class SplitTunnelActivity : AppCompatActivity() {
             allApps.addAll(apps)
             filter(binding.search.text?.toString().orEmpty())
             binding.progress.visibility = View.GONE
+            binding.saveButton.isEnabled = true
         }
     }
 
@@ -131,27 +143,40 @@ class SplitTunnelActivity : AppCompatActivity() {
     private fun save() {
         val onlySelected = binding.modeInclude.isChecked
         val selection = SplitTunnelSelection(onlySelected, selected.toSet())
-        SplitTunnel.store(applicationContext, tunnelName, selection)
+        if (onlySelected && selection.packages.isEmpty()) {
+            Toast.makeText(this, R.string.split_tunnel_select_at_least_one, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.saveButton.isEnabled = false
         binding.progress.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
-                SplitTunnel.apply(applicationContext, tunnelName)
+                val manager = Application.getTunnelManager()
+                val tunnel = checkNotNull(manager.getTunnels()[tunnelName])
+                manager.updateTunnelConfig(tunnel) {
+                    SplitTunnel.withSelection(tunnel.getConfigAsync(), selection)
+                }
                 Toast.makeText(
                     this@SplitTunnelActivity,
                     getString(R.string.split_tunnel_saved),
                     Toast.LENGTH_SHORT,
                 ).show()
                 finish()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Toast.makeText(
-                    this@SplitTunnelActivity,
-                    getString(R.string.split_tunnel_failed, e.localizedMessage ?: ""),
-                    Toast.LENGTH_LONG,
-                ).show()
+                showFailure(e)
             } finally {
                 binding.progress.visibility = View.GONE
+                binding.saveButton.isEnabled = true
             }
         }
+    }
+
+    private fun showFailure(e: Exception) {
+        Toast.makeText(
+            this, getString(R.string.split_tunnel_failed, e.localizedMessage.orEmpty()), Toast.LENGTH_LONG,
+        ).show()
     }
 
     private inner class AppsAdapter : RecyclerView.Adapter<AppsAdapter.Holder>() {

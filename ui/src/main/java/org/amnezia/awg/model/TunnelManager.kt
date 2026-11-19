@@ -24,6 +24,7 @@ import org.amnezia.awg.backend.StatusCallback
 import org.amnezia.awg.backend.Tunnel
 import org.amnezia.awg.configStore.ConfigStore
 import org.amnezia.awg.databinding.ObservableSortedKeyedArrayList
+import org.amnezia.awg.panel.PanelConfigLinks
 import org.amnezia.awg.util.ErrorMessages
 import org.amnezia.awg.util.TunnelOrder
 import org.amnezia.awg.util.UserKnobs
@@ -36,6 +37,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -45,6 +48,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
     private val tunnels = CompletableDeferred<ObservableSortedKeyedArrayList<String, ObservableTunnel>>()
     private val context: Context = get()
     private val tunnelMap: ObservableSortedKeyedArrayList<String, ObservableTunnel> = ObservableSortedKeyedArrayList(TunnelComparator)
+    private val configUpdates = Mutex()
     private var haveLoaded = false
 
     private fun addToList(name: String, config: Config?, state: Tunnel.State): ObservableTunnel {
@@ -110,6 +114,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
                 lastUsedTunnel = tunnel
             throw e
         }
+        PanelConfigLinks(context).forgetTunnel(tunnel.name)
         TunnelOrder.remove(context, tunnel.name)
         TunnelComparator.updateRanks(TunnelOrder.ranks(context))
     }
@@ -211,12 +216,21 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         UserKnobs.setRunningTunnels(tunnelMap.filter { it.state == Tunnel.State.UP }.map { it.name }.toSet())
     }
 
-    suspend fun setTunnelConfig(tunnel: ObservableTunnel, config: Config): Config = withContext(Dispatchers.Main.immediate) {
-        tunnel.onConfigChanged(withContext(Dispatchers.IO) {
-            getBackend().setState(tunnel, tunnel.state, config)
-            configStore.save(tunnel.name, config)
-        })!!
-    }
+    suspend fun setTunnelConfig(tunnel: ObservableTunnel, config: Config): Config =
+        updateTunnelConfig(tunnel) { config }
+
+    suspend fun updateTunnelConfig(tunnel: ObservableTunnel, transform: suspend () -> Config): Config =
+        withContext(Dispatchers.Main.immediate) {
+            configUpdates.withLock {
+                check(tunnelMap[tunnel.name] === tunnel)
+                val config = transform()
+                check(tunnelMap[tunnel.name] === tunnel)
+                tunnel.onConfigChanged(withContext(Dispatchers.IO) {
+                    getBackend().setState(tunnel, tunnel.state, config)
+                    configStore.save(tunnel.name, config)
+                })!!
+            }
+        }
 
     suspend fun setTunnelName(tunnel: ObservableTunnel, name: String): String = withContext(Dispatchers.Main.immediate) {
         if (Tunnel.isNameInvalid(name))
@@ -236,6 +250,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
             if (originalState == Tunnel.State.UP)
                 withContext(Dispatchers.IO) { getBackend().setState(tunnel, Tunnel.State.DOWN, null) }
             withContext(Dispatchers.IO) { configStore.rename(tunnel.name, name) }
+            PanelConfigLinks(context).renameTunnel(tunnel.name, name)
             newName = tunnel.onNameChanged(name)
             if (originalState == Tunnel.State.UP)
                 withContext(Dispatchers.IO) { getBackend().setState(tunnel, Tunnel.State.UP, tunnel.config) }
