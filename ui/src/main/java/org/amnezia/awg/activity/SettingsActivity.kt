@@ -1,6 +1,8 @@
 /*
  * Copyright © 2017-2023 WireGuard LLC. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Modified for deeps kaskad.
  */
 package org.amnezia.awg.activity
 
@@ -80,6 +82,10 @@ class SettingsActivity : AppCompatActivity() {
                 } else {
                     awgQuickOnlyPrefs.forEach { it.parent?.removePreference(it) }
                 }
+            }
+            preferenceManager.findPreference<Preference>("licenses")?.setOnPreferenceClickListener {
+                startActivity(Intent(requireContext(), LicensesActivity::class.java))
+                true
             }
             preferenceManager.findPreference<Preference>("log_viewer")?.setOnPreferenceClickListener {
                 startActivity(Intent(requireContext(), LogViewerActivity::class.java))

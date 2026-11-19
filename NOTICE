@@ -1,0 +1,50 @@
+DEEPS KASKAD Android client
+===========================
+
+This application is a fork of AmneziaWG for Android
+(https://github.com/amnezia-vpn/amneziawg-android), which in turn is a fork of the
+official WireGuard for Android client (https://github.com/WireGuard/wireguard-android).
+The upstream projects are licensed under the Apache License, Version 2.0; this fork
+keeps that license, see LICENSE and COPYING.
+
+Source code of this fork, as distributed in every APK we publish:
+https://github.com/lange232/deeps-kaskad-awg
+
+Changes made for deeps kaskad
+-----------------------------
+
+The following parts differ from upstream amneziawg-android; files that were edited
+carry a "Modified for deeps kaskad" notice in their header.
+
+* Application identity: id `ru.deffhost.kaskad`, name "DEEPS KASKAD", our icons,
+  wordmark, dark palette, version scheme.
+* deeps kaskad panel support (`org.amnezia.awg.panel`, `PanelActivity`,
+  `PanelRoutingActivity`, `PanelStatsActivity`): sign-in, account configurations,
+  internet exits and subnets per configuration, traffic statistics, QR and text
+  sharing, `device_id` handling.
+* Split tunneling per tunnel (`org.amnezia.awg.split.SplitTunnelActivity`); the
+  upstream "applications" picker of the tunnel editor was removed.
+* Drag-to-reorder on the tunnel list, persisted tunnel order.
+* Brand styling of the system bars and the toolbar title.
+* Panel-specific strings, and the import disclaimer that pointed at amnezia.org.
+
+Third-party components
+----------------------
+
+* AmneziaWG for Android (upstream UI and Java code) — Apache License 2.0,
+  `LICENSE`, `licenses/apache-2.0.txt`.
+* amneziawg-go (`libwg-go.so`) — MIT, `licenses/amneziawg-go-MIT.txt`.
+* amneziawg-tools (`libwg.so`, `libwg-quick.so`) — GNU GPL v2,
+  `licenses/amneziawg-tools-GPL-2.0.txt`. These libraries are part of the APK, so the
+  corresponding source is published in this repository, including the
+  `tunnel/tools/amneziawg-tools` submodule.
+* termux-elf-cleaner — GNU GPL v3, build-time tool only, not shipped in the APK,
+  `licenses/elf-cleaner-GPL-3.0.txt`.
+
+Trademarks
+----------
+
+"WireGuard" is a registered trademark of Jason A. Donenfeld; "Amnezia" and
+"AmneziaWG" are marks of the Amnezia project. The licenses above grant no rights to
+these names or logos. This fork uses "AmneziaWG" only to name the protocol it speaks
+and is not affiliated with or endorsed by either project.

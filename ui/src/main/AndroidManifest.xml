@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modified for deeps kaskad -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:installLocation="internalOnly">
@@ -82,6 +83,12 @@
             android:exported="false"
             android:label="@string/split_tunnel"
             android:parentActivityName=".activity.MainActivity" />
+        <activity
+            android:name=".activity.LicensesActivity"
+            android:exported="false"
+            android:label="@string/licenses_title"
+            android:parentActivityName=".activity.SettingsActivity"
+            android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".activity.PanelStatsActivity"
             android:exported="false"

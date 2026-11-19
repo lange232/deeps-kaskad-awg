@@ -330,4 +330,8 @@
     <string name="panel_stats_range_7d">7 days</string>
     <string name="panel_stats_state_on">Enabled</string>
     <string name="panel_stats_state_off">Disabled</string>
+    <!-- licenses -->
+    <string name="licenses_title">Licenses and source code</string>
+    <string name="licenses_summary">Component licenses and where to get the source</string>
+    <string name="licenses_body">DEEPS KASKAD is a fork of AmneziaWG for Android, which is a fork of the official WireGuard for Android client.\n\nSource code of this fork: https://github.com/lange232/deeps-kaskad-awg\n\nComponents:\n- UI and Java code: Apache License 2.0\n- amneziawg-go (libwg-go.so): MIT License\n- amneziawg-tools (libwg.so, libwg-quick.so): GNU GPL v2\n- termux-elf-cleaner: GNU GPL v3, build-time only\n\nFull license texts ship with the source code (repository, folder licenses/).\n\nWireGuard is a registered trademark of Jason A. Donenfeld; Amnezia and AmneziaWG are marks of the Amnezia project. This application is not affiliated with or endorsed by either of them.</string>
 </resources>
