@@ -308,6 +308,11 @@
     <string name="panel_more">More</string>
     <string name="panel_routing">Routing</string>
     <string name="panel_routing_exits">Internet exits</string>
+    <string name="panel_exit_healthy">Exit is available</string>
+    <string name="panel_exit_degraded">Exit is degraded</string>
+    <string name="panel_exit_down">Exit is unavailable</string>
+    <string name="panel_exit_unknown">Exit status is unknown</string>
+    <string name="panel_exit_server_default">Server default exit</string>
     <string name="panel_routing_subnets">Subnets</string>
     <string name="panel_exits_auto">No internet exits are available; internet access is unavailable.</string>
     <string name="panel_subnets_empty">No subnets granted</string>
@@ -322,6 +327,8 @@
     <string name="panel_routing_reload_confirm">Reload the current routes from the server? Your unsaved selections on this screen will be discarded.</string>
     <string name="split_tunnel_select_at_least_one">Select at least one app for this mode</string>
     <string name="panel_config_import">Import into tunnels</string>
+    <string name="panel_choose_existing_tunnel">Several tunnels match. Choose one:</string>
+    <string name="panel_tunnel_bound_elsewhere">A matching tunnel is already linked to another account or configuration. No new tunnel was created.</string>
     <string name="panel_config_update">Refresh tunnel</string>
     <string name="panel_config_share">Share configuration</string>
     <string name="panel_config_qr">QR code</string>

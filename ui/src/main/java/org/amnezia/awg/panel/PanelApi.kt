@@ -44,8 +44,11 @@ data class PanelExit(
     val id: Int,
     val name: String,
     val comment: String,
-    val alive: Boolean,
+    val alive: Boolean?,
+    val degraded: Boolean?,
     val rttMs: Double?,
+    /** Default server route, not necessarily the route used by this configuration. */
+    val active: Boolean?,
 )
 
 /** A routed subnet the account is granted, with its state for one configuration. */
@@ -166,8 +169,11 @@ class PanelApi(private val context: Context) {
                     id = exit.getInt("id"),
                     name = exit.getString("name"),
                     comment = exit.optString("comment"),
-                    alive = exit.optBoolean("alive", false),
+                    alive = if (exit.isNull("alive")) null else exit.optBoolean("alive"),
+                    degraded = if (exit.isNull("degraded")) null else exit.optBoolean("degraded"),
                     rttMs = if (exit.isNull("rtt_ms")) null else exit.optDouble("rtt_ms"),
+                    active = if (exit.isNull("active") || !exit.optBoolean("status_fresh", true)) null
+                        else exit.optBoolean("active"),
                 )
             }
         }

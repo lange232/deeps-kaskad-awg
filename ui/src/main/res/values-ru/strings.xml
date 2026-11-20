@@ -308,6 +308,11 @@
     <string name="panel_more">Ещё</string>
     <string name="panel_routing">Маршруты</string>
     <string name="panel_routing_exits">Интернет-выходы</string>
+    <string name="panel_exit_healthy">Выход доступен</string>
+    <string name="panel_exit_degraded">Выход работает с ухудшением</string>
+    <string name="panel_exit_down">Выход недоступен</string>
+    <string name="panel_exit_unknown">Состояние выхода неизвестно</string>
+    <string name="panel_exit_server_default">Основной выход сервера</string>
     <string name="panel_routing_subnets">Подсети</string>
     <string name="panel_exits_auto">Интернет-выходы не выданы; доступ в интернет недоступен.</string>
     <string name="panel_subnets_empty">Подсети не выданы</string>
@@ -322,6 +327,8 @@
     <string name="panel_routing_reload_confirm">Загрузить текущие маршруты с сервера? Несохранённые изменения на этом экране будут потеряны.</string>
     <string name="split_tunnel_select_at_least_one">Выберите хотя бы одно приложение для этого режима</string>
     <string name="panel_config_import">Импортировать в туннели</string>
+    <string name="panel_choose_existing_tunnel">Найдено несколько туннелей. Выберите нужный:</string>
+    <string name="panel_tunnel_bound_elsewhere">Найденный туннель уже связан с другим аккаунтом или конфигурацией. Новый туннель не создан.</string>
     <string name="panel_config_update">Обновить туннель</string>
     <string name="panel_config_share">Поделиться конфигурацией</string>
     <string name="panel_config_qr">QR-код</string>

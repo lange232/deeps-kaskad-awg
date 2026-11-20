@@ -349,10 +349,17 @@ class PanelRoutingActivity : AppCompatActivity() {
             val item = ItemPanelExitBinding.inflate(LayoutInflater.from(this), binding.exitsList, false)
             item.exitName.text = exit.comment.ifBlank { exit.name }
             item.exitComment.text = exit.name
+            item.exitActive.visibility = if (exit.active == true) View.VISIBLE else View.GONE
             item.exitRtt.text = exit.rttMs?.let { "${it.toInt()} ms" } ?: ""
-            item.exitStatus.setBackgroundColor(
-                Color.parseColor(if (exit.alive) "#6DB58B" else "#CF6679"),
-            )
+            val (statusColor, statusText) = when {
+                exit.alive == null -> R.color.exit_status_unknown to R.string.panel_exit_unknown
+                exit.degraded == true -> R.color.exit_status_degraded to R.string.panel_exit_degraded
+                exit.alive -> R.color.exit_status_healthy to R.string.panel_exit_healthy
+                else -> R.color.exit_status_down to R.string.panel_exit_down
+            }
+            item.exitStatus.setBackgroundColor(getColor(statusColor))
+            item.exitStatus.contentDescription = getString(statusText)
+            item.exitStatus.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             item.exitUp.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position > 0
             item.exitDown.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position < exits.size - 1
             item.exitUp.setOnClickListener { moveExit(position, -1) }

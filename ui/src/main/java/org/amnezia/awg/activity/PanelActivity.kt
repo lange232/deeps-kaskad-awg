@@ -26,6 +26,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.amnezia.awg.Application
 import org.amnezia.awg.R
 import org.amnezia.awg.databinding.ActivityPanelBinding
@@ -38,6 +40,7 @@ import org.amnezia.awg.panel.PanelConfigLinks
 import org.amnezia.awg.panel.PanelDevice
 import org.amnezia.awg.panel.PanelSession
 import org.amnezia.awg.panel.PanelSessionStore
+import org.amnezia.awg.model.ObservableTunnel
 import org.amnezia.awg.split.SplitTunnel
 
 /**
@@ -167,13 +170,7 @@ class PanelActivity : AppCompatActivity() {
                 sessionStore.lastEmail = email
                 binding.passwordInput.text?.clear()
                 val own = resolveConfig(session, result.configs)
-                val existing = links.tunnelName(session, own.id)
-                    ?.let { Application.getTunnelManager().getTunnels()[it] }
-                if (existing == null) {
-                    importConfig(own, quiet = true, own = true)
-                } else {
-                    links.save(session, own.id, existing.name, own = true)
-                }
+                importConfig(own, quiet = true, own = true)
                 showSignedIn()
                 loadConfigs()
                 startTrafficRefresh()
@@ -464,17 +461,29 @@ class PanelActivity : AppCompatActivity() {
             val manager = Application.getTunnelManager()
             val tunnels = manager.getTunnels()
             if (sessionStore.session != session) return
-            val existing = links.tunnelName(session, config.id)?.let { tunnels[it] }
-                ?: links.legacyCandidate(session, config.id)?.let { tunnels[it] }?.takeIf {
-                    it.getConfigAsync().getInterface().keyPair.publicKey ==
-                        parsed.getInterface().keyPair.publicKey
-                }
+            // Read every local key before deciding to create anything; a failed read must not
+            // accidentally turn an existing tunnel into a duplicate.
+            val matches = mutableListOf<ObservableTunnel>()
+            for (candidate in tunnels.toList()) {
+                if (candidate.getConfigAsync().getInterface().keyPair.publicKey ==
+                    parsed.getInterface().keyPair.publicKey
+                ) matches.add(candidate)
+            }
+            if (sessionStore.session != session) return
+            val available = matches.filter { links.isAvailable(session, config.id, it.name) }
+            if (matches.isNotEmpty() && available.isEmpty()) {
+                toast(getString(R.string.panel_tunnel_bound_elsewhere))
+                return
+            }
+            val existing = when (available.size) {
+                0 -> null
+                1 -> available.single()
+                else -> chooseExistingTunnel(available) ?: return
+            }
             if (existing != null) {
-                manager.updateTunnelConfig(existing) {
-                    val selection = SplitTunnel.selectionOf(existing.getConfigAsync())
-                    check(sessionStore.session == session)
-                    SplitTunnel.withSelection(parsed, selection)
-                }
+                check(sessionStore.session == session)
+                check(tunnels[existing.name] === existing)
+                check(links.isAvailable(session, config.id, existing.name))
                 links.save(session, config.id, existing.name, own)
                 if (!quiet) toast(getString(R.string.panel_config_updated, existing.name))
                 return
@@ -491,6 +500,24 @@ class PanelActivity : AppCompatActivity() {
             toast(getString(R.string.import_error, e.localizedMessage ?: ""))
         }
     }
+
+    private suspend fun chooseExistingTunnel(matches: List<ObservableTunnel>): ObservableTunnel? =
+        suspendCancellableCoroutine { continuation ->
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.panel_choose_existing_tunnel)
+                .setItems(matches.map { it.name }.toTypedArray()) { _, index ->
+                    if (continuation.isActive) continuation.resume(matches[index])
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ ->
+                    if (continuation.isActive) continuation.resume(null)
+                }
+                .setOnCancelListener {
+                    if (continuation.isActive) continuation.resume(null)
+                }
+                .create()
+            continuation.invokeOnCancellation { dialog.dismiss() }
+            dialog.show()
+        }
 
     /**
      * The backend accepts `[a-zA-Z0-9_=+.-]{1,15}`, while a panel configuration name may be 32
