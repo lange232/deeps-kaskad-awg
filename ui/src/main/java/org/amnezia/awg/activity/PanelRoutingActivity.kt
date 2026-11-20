@@ -10,12 +10,9 @@ import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -49,6 +46,7 @@ class PanelRoutingActivity : AppCompatActivity() {
     private var loaded = false
     private var working = false
     private var pendingLocalRefresh = false
+    private var routeResultUncertain = false
     private var confirmedEnabled: Boolean? = null
     private var toggling = false
     private var hours = 0
@@ -58,8 +56,6 @@ class PanelRoutingActivity : AppCompatActivity() {
     private var configId: Int = 0
     private val exits = mutableListOf<PanelExit>()
     private val subnets = mutableListOf<PanelSubnet>()
-    private val exitsAdapter = ExitsAdapter()
-    private val subnetsAdapter = SubnetsAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,11 +74,15 @@ class PanelRoutingActivity : AppCompatActivity() {
         }
         links = PanelConfigLinks(applicationContext)
 
-        binding.exitsList.layoutManager = LinearLayoutManager(this)
-        binding.exitsList.adapter = exitsAdapter
-        binding.subnetsList.layoutManager = LinearLayoutManager(this)
-        binding.subnetsList.adapter = subnetsAdapter
-        binding.saveButton.setOnClickListener { save() }
+        binding.saveButton.setOnClickListener {
+            if (routeResultUncertain) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setMessage(R.string.panel_routing_reload_confirm)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(R.string.panel_refresh) { _, _ -> load() }
+                    .show()
+            } else save()
+        }
         binding.configEnabled.setOnCheckedChangeListener { _, checked ->
             if (confirmedEnabled != null && checked != confirmedEnabled && !toggling) toggleConfig()
         }
@@ -229,11 +229,11 @@ class PanelRoutingActivity : AppCompatActivity() {
                 exits.addAll(loadedExits)
                 subnets.clear()
                 subnets.addAll(loadedSubnets)
-                exitsAdapter.notifyDataSetChanged()
-                subnetsAdapter.notifyDataSetChanged()
                 binding.exitsEmpty.visibility = if (exits.isEmpty()) View.VISIBLE else View.GONE
                 binding.subnetsEmpty.visibility = if (subnets.isEmpty()) View.VISIBLE else View.GONE
                 loaded = true
+                routeResultUncertain = false
+                binding.saveButton.setText(R.string.panel_save_routes)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PanelApiException) {
@@ -252,8 +252,10 @@ class PanelRoutingActivity : AppCompatActivity() {
         busy(true)
         lifecycleScope.launch {
             var subnetsSaved = false
+            var writingServer = false
             try {
                 if (!pendingLocalRefresh) {
+                    writingServer = true
                     api.setSubnets(
                         session.server,
                         session.token,
@@ -265,6 +267,7 @@ class PanelRoutingActivity : AppCompatActivity() {
                     if (exits.isNotEmpty()) {
                         api.setExitOrder(session.server, session.token, configId, exits.map { it.id })
                     }
+                    writingServer = false
                     pendingLocalRefresh = true
                 }
                 if (sessionStore.session != session) return@launch finish()
@@ -275,10 +278,17 @@ class PanelRoutingActivity : AppCompatActivity() {
                 throw e
             } catch (e: Exception) {
                 val detail = (e as? PanelApiException)?.message ?: getString(R.string.panel_error_connect)
+                val status = (e as? PanelApiException)?.status
+                val uncertain = writingServer && (status == null || status == 408 || status >= 500)
                 when {
                     pendingLocalRefresh -> {
                         binding.saveButton.setText(R.string.panel_routing_retry_apply)
                         toast(getString(R.string.panel_config_refresh_failed))
+                    }
+                    uncertain -> {
+                        routeResultUncertain = true
+                        binding.saveButton.setText(R.string.panel_routing_reload)
+                        toast(getString(R.string.panel_routing_uncertain))
                     }
                     subnetsSaved -> toast(getString(R.string.panel_routing_partial, detail))
                     else -> toast(detail)
@@ -325,36 +335,30 @@ class PanelRoutingActivity : AppCompatActivity() {
         working = value
         binding.saveButton.isEnabled = loaded && !value
         binding.progress.visibility = if (value) View.VISIBLE else View.GONE
-        exitsAdapter.notifyDataSetChanged()
-        subnetsAdapter.notifyDataSetChanged()
+        renderExits()
+        renderSubnets()
     }
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    private inner class ExitsAdapter : RecyclerView.Adapter<ExitsAdapter.Holder>() {
-
-        inner class Holder(val item: ItemPanelExitBinding) : RecyclerView.ViewHolder(item.root)
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
-            Holder(ItemPanelExitBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            val exit = exits[position]
-            holder.item.exitName.text = exit.comment.ifBlank { exit.name }
-            holder.item.exitComment.text = exit.name
-            holder.item.exitRtt.text = exit.rttMs?.let { "${it.toInt()} ms" } ?: ""
-            holder.item.exitStatus.setBackgroundColor(
+    private fun renderExits() {
+        binding.exitsList.removeAllViews()
+        exits.forEachIndexed { position, exit ->
+            val item = ItemPanelExitBinding.inflate(LayoutInflater.from(this), binding.exitsList, false)
+            item.exitName.text = exit.comment.ifBlank { exit.name }
+            item.exitComment.text = exit.name
+            item.exitRtt.text = exit.rttMs?.let { "${it.toInt()} ms" } ?: ""
+            item.exitStatus.setBackgroundColor(
                 Color.parseColor(if (exit.alive) "#6DB58B" else "#CF6679"),
             )
-            holder.item.exitUp.isEnabled = !working && !pendingLocalRefresh && position > 0
-            holder.item.exitDown.isEnabled = !working && !pendingLocalRefresh && position < exits.size - 1
-            holder.item.exitUp.setOnClickListener { moveExit(position, -1) }
-            holder.item.exitDown.setOnClickListener { moveExit(position, 1) }
+            item.exitUp.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position > 0
+            item.exitDown.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position < exits.size - 1
+            item.exitUp.setOnClickListener { moveExit(position, -1) }
+            item.exitDown.setOnClickListener { moveExit(position, 1) }
+            binding.exitsList.addView(item.root)
         }
-
-        override fun getItemCount(): Int = exits.size
     }
 
     private fun moveExit(position: Int, delta: Int) {
@@ -362,30 +366,22 @@ class PanelRoutingActivity : AppCompatActivity() {
         if (target !in exits.indices) return
         val moved = exits.removeAt(position)
         exits.add(target, moved)
-        exitsAdapter.notifyItemMoved(position, target)
-        exitsAdapter.notifyItemRangeChanged(0, exits.size)
+        renderExits()
     }
 
-    private inner class SubnetsAdapter : RecyclerView.Adapter<SubnetsAdapter.Holder>() {
-
-        inner class Holder(val item: ItemPanelSubnetBinding) : RecyclerView.ViewHolder(item.root)
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
-            Holder(ItemPanelSubnetBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            val subnet = subnets[position]
-            holder.item.subnetName.text = subnet.comment.ifBlank { subnet.name }
-            holder.item.subnetRoutes.text = subnet.routes
-            holder.item.subnetEnabled.setOnCheckedChangeListener(null)
-            holder.item.subnetEnabled.isEnabled = !working && !pendingLocalRefresh
-            holder.item.subnetEnabled.isChecked = subnet.enabled
-            holder.item.subnetEnabled.setOnCheckedChangeListener { _, checked ->
+    private fun renderSubnets() {
+        binding.subnetsList.removeAllViews()
+        subnets.forEachIndexed { position, subnet ->
+            val item = ItemPanelSubnetBinding.inflate(LayoutInflater.from(this), binding.subnetsList, false)
+            item.subnetName.text = subnet.comment.ifBlank { subnet.name }
+            item.subnetRoutes.text = subnet.routes
+            item.subnetEnabled.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain
+            item.subnetEnabled.isChecked = subnet.enabled
+            item.subnetEnabled.setOnCheckedChangeListener { _, checked ->
                 subnets[position] = subnet.copy(enabled = checked)
             }
+            binding.subnetsList.addView(item.root)
         }
-
-        override fun getItemCount(): Int = subnets.size
     }
 
     companion object {

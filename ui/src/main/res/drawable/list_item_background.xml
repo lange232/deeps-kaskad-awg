@@ -6,11 +6,20 @@
             <item
                 android:state_activated="true"
                 app:state_multiselected="true">
-                <color android:color="?attr/colorSurfaceVariant" />
+                <shape>
+                    <solid android:color="?attr/colorSurfaceVariant" />
+                    <stroke android:width="1dp" android:color="?attr/colorPrimary" />
+                    <corners android:radius="8dp" />
+                </shape>
             </item>
             <item android:state_activated="true">
-                <color android:color="?attr/colorControlHighlight" />
+                <shape>
+                    <solid android:color="?attr/colorSurfaceVariant" />
+                    <stroke android:width="1dp" android:color="@color/md_theme_dark_primaryContainer" />
+                    <corners android:radius="8dp" />
+                </shape>
             </item>
+            <item android:drawable="@drawable/panel_card_background" />
         </selector>
     </item>
     <item android:drawable="?attr/selectableItemBackground" />

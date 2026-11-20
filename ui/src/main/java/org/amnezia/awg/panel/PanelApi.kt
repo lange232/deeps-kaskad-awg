@@ -363,7 +363,7 @@ class PanelApi(private val context: Context) {
             name = json.getString("name"),
             deviceId = json.optString("device_id"),
             ip = json.optString("ip"),
-            remoteIp = json.optString("remote_ip").substringBefore(':'),
+            remoteIp = json.optString("remote_ip"),
             enabled = json.optBoolean("enabled", false),
             internet = json.optBoolean("internet", false),
             exits = json.optJSONArray("exits")?.let { array ->

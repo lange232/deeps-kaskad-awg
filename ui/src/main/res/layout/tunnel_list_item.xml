@@ -33,6 +33,8 @@
         android:id="@+id/tunnel_list_item"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginHorizontal="2dp"
+        android:layout_marginTop="2dp"
         android:background="@drawable/list_item_background"
         android:descendantFocusability="beforeDescendants"
         android:focusable="true"

@@ -6,12 +6,11 @@
 package org.amnezia.awg.activity
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -30,6 +29,7 @@ import kotlinx.coroutines.launch
 import org.amnezia.awg.Application
 import org.amnezia.awg.R
 import org.amnezia.awg.databinding.ActivityPanelBinding
+import org.amnezia.awg.databinding.DialogAddConfigBinding
 import org.amnezia.awg.databinding.ItemPanelConfigBinding
 import org.amnezia.awg.panel.PanelApi
 import org.amnezia.awg.panel.PanelApiException
@@ -59,6 +59,7 @@ class PanelActivity : AppCompatActivity() {
     private var requestGeneration = 0
     private var creatingDevice = false
     private var loadingConfigs = false
+    private var uncertainListLoaded = false
     private val configs = mutableListOf<PanelConfig>()
     private val adapter = ConfigAdapter()
 
@@ -77,13 +78,24 @@ class PanelActivity : AppCompatActivity() {
         binding.configList.adapter = adapter
 
         binding.signInButton.setOnClickListener { signIn() }
-        binding.signOutButton.setOnClickListener { confirmSignOut() }
-        binding.refreshButton.setOnClickListener { loadConfigs() }
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.account_refresh -> { loadConfigs(); true }
+                R.id.account_sign_out -> { confirmSignOut(); true }
+                else -> false
+            }
+        }
+        binding.reviewCreationButton.setOnClickListener {
+            val session = sessionStore.session ?: return@setOnClickListener
+            confirmReviewedCreation(session)
+        }
         binding.addDeviceButton.setOnClickListener { promptAddDevice() }
 
         val session = sessionStore.session
         if (session == null) {
             showSignedOut()
+            binding.serverInput.setText("https://")
+            binding.serverInput.setSelection(binding.serverInput.text?.length ?: 0)
             binding.emailInput.setText(sessionStore.lastEmail)
         } else {
             binding.serverInput.setText(session.server)
@@ -139,7 +151,7 @@ class PanelActivity : AppCompatActivity() {
         val server = binding.serverInput.text?.toString()?.trim().orEmpty()
         val email = binding.emailInput.text?.toString()?.trim().orEmpty()
         val password = binding.passwordInput.text?.toString().orEmpty()
-        if (server.isBlank() || email.isBlank() || password.isBlank()) {
+        if (server.isBlank() || server.equals("https://", ignoreCase = true) || email.isBlank() || password.isBlank()) {
             toast(getString(R.string.panel_error_fields))
             return
         }
@@ -194,12 +206,14 @@ class PanelActivity : AppCompatActivity() {
         refreshJob?.cancel()
         requestGeneration++
         loadingConfigs = false
+        uncertainListLoaded = false
         sessionStore.clear()
         if (session != null) lifecycleScope.launch { api.logout(session.server, session.token) }
         configs.clear()
         adapter.notifyDataSetChanged()
         // The address is typed by the user, never carried over from a previous session.
-        binding.serverInput.setText("")
+        binding.serverInput.setText("https://")
+        binding.serverInput.setSelection(binding.serverInput.text?.length ?: 0)
         binding.passwordInput.text?.clear()
         showSignedOut()
     }
@@ -260,6 +274,7 @@ class PanelActivity : AppCompatActivity() {
         val session = sessionStore.session ?: return
         configs.clear()
         configs.addAll(loaded)
+        if (creationUncertain(session)) uncertainListLoaded = true
         adapter.notifyDataSetChanged()
         binding.accountText.text = "${session.server} · ${session.email}"
         binding.configCount.text = getString(R.string.panel_config_count, loaded.size)
@@ -275,28 +290,59 @@ class PanelActivity : AppCompatActivity() {
                     date,
                 )
             }
+        updateCreationControls(session)
+    }
+
+    private fun creationKey(session: PanelSession): String =
+        "${Uri.encode(session.server.trimEnd('/'))}:${Uri.encode(session.email.lowercase(Locale.ROOT))}"
+
+    private fun creationUncertain(session: PanelSession): Boolean =
+        getSharedPreferences("panel_pending_creation", MODE_PRIVATE)
+            .getBoolean(creationKey(session), false)
+
+    private fun setCreationUncertain(session: PanelSession, uncertain: Boolean): Boolean {
+        val stored = getSharedPreferences("panel_pending_creation", MODE_PRIVATE).edit()
+            .putBoolean(creationKey(session), uncertain).commit()
+        uncertainListLoaded = false
+        if (sessionStore.session == session) updateCreationControls(session)
+        return stored
+    }
+
+    private fun updateCreationControls(session: PanelSession) {
+        val uncertain = creationUncertain(session)
+        binding.createUncertain.visibility = if (uncertain) View.VISIBLE else View.GONE
+        binding.reviewCreationButton.visibility = if (uncertain) View.VISIBLE else View.GONE
+        binding.reviewCreationButton.isEnabled = uncertainListLoaded
+        binding.addDeviceButton.isEnabled = !creatingDevice && !uncertain
+    }
+
+    private fun confirmReviewedCreation(session: PanelSession) {
+        if (!uncertainListLoaded) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.panel_create_reviewed)
+            .setMessage(R.string.panel_create_review_confirm)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.panel_create_reviewed) { _, _ ->
+                if (sessionStore.session == session) setCreationUncertain(session, false)
+            }
+            .show()
     }
 
     private fun promptAddDevice() {
         val session = sessionStore.session ?: return
         if (creatingDevice) return
-        val input = EditText(this).apply {
-            hint = getString(R.string.panel_device_name_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setSingleLine()
-        }
+        val form = DialogAddConfigBinding.inflate(layoutInflater)
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.panel_add_device)
-            .setMessage(R.string.panel_add_device_message)
-            .setView(input)
+            .setView(form.root)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.panel_create, null)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val name = input.text.toString().trim()
+                val name = form.nameInput.text.toString().trim()
                 if (name.isNotEmpty() && !name.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]{0,31}"))) {
-                    input.error = getString(R.string.panel_device_name_invalid)
+                    form.nameLayout.error = getString(R.string.panel_device_name_invalid)
                     return@setOnClickListener
                 }
                 if (sessionStore.session != session || creatingDevice) {
@@ -311,12 +357,20 @@ class PanelActivity : AppCompatActivity() {
     }
 
     private fun createDevice(session: PanelSession, name: String?) {
+        if (creationUncertain(session)) return
         creatingDevice = true
-        binding.addDeviceButton.isEnabled = false
+        // Persist before the POST so an interrupted process cannot silently invite a duplicate.
+        if (!setCreationUncertain(session, true)) {
+            creatingDevice = false
+            updateCreationControls(session)
+            toast(getString(R.string.panel_error_connect))
+            return
+        }
         lifecycleScope.launch {
             try {
                 // No device_id: the new peer belongs to a different device.
                 val config = api.createConfig(session.server, session.token, name, null)
+                setCreationUncertain(session, false)
                 if (sessionStore.session != session) return@launch
                 AlertDialog.Builder(this@PanelActivity)
                     .setTitle(R.string.panel_device_created)
@@ -330,7 +384,13 @@ class PanelActivity : AppCompatActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PanelApiException) {
-                if (sessionStore.session == session) toast(e.message ?: getString(R.string.panel_error_connect))
+                if (e.status in listOf(400, 401, 403, 404, 409, 422, 429)) {
+                    setCreationUncertain(session, false)
+                    if (sessionStore.session == session) toast(e.message ?: getString(R.string.panel_error_connect))
+                } else if (sessionStore.session == session) {
+                    toast(getString(R.string.panel_create_uncertain))
+                    loadConfigs()
+                }
             } catch (e: Exception) {
                 if (sessionStore.session == session) {
                     toast(getString(R.string.panel_create_uncertain))
@@ -338,7 +398,7 @@ class PanelActivity : AppCompatActivity() {
                 }
             } finally {
                 creatingDevice = false
-                binding.addDeviceButton.isEnabled = true
+                if (sessionStore.session == session) updateCreationControls(session)
             }
         }
     }
@@ -501,12 +561,19 @@ class PanelActivity : AppCompatActivity() {
     private fun showSignedOut() {
         binding.signInContainer.visibility = android.view.View.VISIBLE
         binding.signedInContainer.visibility = android.view.View.GONE
+        binding.addDeviceButton.visibility = View.GONE
+        binding.toolbar.menu.findItem(R.id.account_refresh).isVisible = false
+        binding.toolbar.menu.findItem(R.id.account_sign_out).isVisible = false
         busy(false)
     }
 
     private fun showSignedIn() {
         binding.signInContainer.visibility = android.view.View.GONE
         binding.signedInContainer.visibility = android.view.View.VISIBLE
+        binding.addDeviceButton.visibility = View.VISIBLE
+        binding.toolbar.menu.findItem(R.id.account_refresh).isVisible = true
+        binding.toolbar.menu.findItem(R.id.account_sign_out).isVisible = true
+        sessionStore.session?.let(::updateCreationControls)
         busy(false)
     }
 
