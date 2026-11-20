@@ -8,7 +8,7 @@ package org.amnezia.awg.panel
 import android.content.Context
 
 /** A signed-in panel session: where the panel lives, who signed in and the bearer token. */
-data class PanelSession(val server: String, val email: String, val token: String)
+data class PanelSession(val server: String, val email: String, val token: String, val expiresAt: Long? = null)
 
 /**
  * Keeps the panel session in the app-private preferences. The token lives 30 days on the server
@@ -24,7 +24,7 @@ class PanelSessionStore(context: Context) {
             val server = prefs.getString(KEY_SERVER, null) ?: return null
             val email = prefs.getString(KEY_EMAIL, null) ?: return null
             val token = prefs.getString(KEY_TOKEN, null) ?: return null
-            return PanelSession(server, email, token)
+            return PanelSession(server, email, token, prefs.getLong(KEY_EXPIRES_AT, 0).takeIf { it > 0 })
         }
         set(value) {
             prefs
@@ -34,10 +34,13 @@ class PanelSessionStore(context: Context) {
                         remove(KEY_SERVER)
                         remove(KEY_EMAIL)
                         remove(KEY_TOKEN)
+                        remove(KEY_EXPIRES_AT)
                     } else {
                         putString(KEY_SERVER, value.server)
                         putString(KEY_EMAIL, value.email)
                         putString(KEY_TOKEN, value.token)
+                        if (value.expiresAt != null) putLong(KEY_EXPIRES_AT, value.expiresAt)
+                        else remove(KEY_EXPIRES_AT)
                     }
                 }
                 .apply()
@@ -68,6 +71,7 @@ class PanelSessionStore(context: Context) {
         const val KEY_SERVER = "server"
         const val KEY_EMAIL = "email"
         const val KEY_TOKEN = "token"
+        const val KEY_EXPIRES_AT = "expires_at"
         const val KEY_SELECTED_CONFIG = "selected_config_id"
         const val KEY_LAST_SERVER = "last_server"
         const val KEY_LAST_EMAIL = "last_email"

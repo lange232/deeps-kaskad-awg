@@ -7,8 +7,11 @@ package org.amnezia.awg.activity
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -17,6 +20,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import java.util.Locale
+import java.util.Date
+import java.text.DateFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +56,9 @@ class PanelActivity : AppCompatActivity() {
     private lateinit var links: PanelConfigLinks
 
     private var refreshJob: Job? = null
+    private var requestGeneration = 0
+    private var creatingDevice = false
+    private var loadingConfigs = false
     private val configs = mutableListOf<PanelConfig>()
     private val adapter = ConfigAdapter()
 
@@ -69,7 +77,9 @@ class PanelActivity : AppCompatActivity() {
         binding.configList.adapter = adapter
 
         binding.signInButton.setOnClickListener { signIn() }
-        binding.signOutButton.setOnClickListener { signOut() }
+        binding.signOutButton.setOnClickListener { confirmSignOut() }
+        binding.refreshButton.setOnClickListener { loadConfigs() }
+        binding.addDeviceButton.setOnClickListener { promptAddDevice() }
 
         val session = sessionStore.session
         if (session == null) {
@@ -79,7 +89,6 @@ class PanelActivity : AppCompatActivity() {
             binding.serverInput.setText(session.server)
             binding.emailInput.setText(session.email)
             showSignedIn()
-            loadConfigs()
         }
     }
 
@@ -91,8 +100,8 @@ class PanelActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (sessionStore.session != null) {
-            loadConfigs()
             startTrafficRefresh()
+            loadConfigs()
         }
     }
 
@@ -108,13 +117,15 @@ class PanelActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 while (isActive) {
                     delay(TRAFFIC_REFRESH_MS)
+                    if (loadingConfigs || creatingDevice) continue
                     val session = sessionStore.session ?: return@launch
+                    val generation = ++requestGeneration
                     try {
                         val loaded = api.fetchConfigs(session.server, session.token)
                         if (sessionStore.session != session) return@launch
-                        configs.clear()
-                        configs.addAll(loaded)
-                        adapter.notifyDataSetChanged()
+                        if (generation == requestGeneration) showConfigs(loaded)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         // A silent poll: a failed refresh must not interrupt the screen.
                     }
@@ -136,7 +147,7 @@ class PanelActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val result = api.login(server, email, password)
-                val session = PanelSession(server, result.email.ifBlank { email }, result.token)
+                val session = PanelSession(server, result.email.ifBlank { email }, result.token, result.expiresAt)
                 configs.clear()
                 adapter.notifyDataSetChanged()
                 sessionStore.session = session
@@ -153,6 +164,9 @@ class PanelActivity : AppCompatActivity() {
                 }
                 showSignedIn()
                 loadConfigs()
+                startTrafficRefresh()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: PanelApiException) {
                 toast(e.message ?: getString(R.string.panel_error_connect))
             } catch (e: Exception) {
@@ -163,9 +177,23 @@ class PanelActivity : AppCompatActivity() {
         }
     }
 
+    private fun confirmSignOut() {
+        val session = sessionStore.session ?: return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.panel_sign_out)
+            .setMessage(R.string.panel_sign_out_confirm)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.panel_sign_out) { _, _ ->
+                if (sessionStore.session == session) signOut()
+            }
+            .show()
+    }
+
     private fun signOut() {
         val session = sessionStore.session
         refreshJob?.cancel()
+        requestGeneration++
+        loadingConfigs = false
         sessionStore.clear()
         if (session != null) lifecycleScope.launch { api.logout(session.server, session.token) }
         configs.clear()
@@ -197,16 +225,16 @@ class PanelActivity : AppCompatActivity() {
 
     private fun loadConfigs() {
         val session = sessionStore.session ?: return
+        val generation = ++requestGeneration
+        loadingConfigs = true
         busy(true)
         lifecycleScope.launch {
             try {
                 val loaded = api.fetchConfigs(session.server, session.token)
-                if (sessionStore.session != session) return@launch
-                configs.clear()
-                configs.addAll(loaded)
-                adapter.notifyDataSetChanged()
-                binding.accountText.text = "${session.server} · ${session.email}"
+                if (sessionStore.session != session || generation != requestGeneration) return@launch
+                showConfigs(loaded)
             } catch (e: PanelApiException) {
+                if (sessionStore.session != session || generation != requestGeneration) return@launch
                 toast(e.message ?: getString(R.string.panel_error_connect))
                 if (e.status == 401 && sessionStore.session == session) {
                     sessionStore.clear()
@@ -214,35 +242,111 @@ class PanelActivity : AppCompatActivity() {
                     adapter.notifyDataSetChanged()
                     showSignedOut()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (sessionStore.session != session || generation != requestGeneration) return@launch
                 toast(getString(R.string.panel_error_connect))
             } finally {
-                busy(false)
+                if (generation == requestGeneration) {
+                    loadingConfigs = false
+                    busy(false)
+                }
             }
         }
     }
 
-    private fun toggleConfig(config: PanelConfig, enabled: Boolean) {
+    private fun showConfigs(loaded: List<PanelConfig>) {
         val session = sessionStore.session ?: return
+        configs.clear()
+        configs.addAll(loaded)
+        adapter.notifyDataSetChanged()
+        binding.accountText.text = "${session.server} · ${session.email}"
+        binding.configCount.text = getString(R.string.panel_config_count, loaded.size)
+        val expiresAt = session.expiresAt
+        binding.sessionExpiry.text =
+            if (expiresAt == null) getString(R.string.panel_session_expiry_unknown)
+            else {
+                val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                    .format(Date(expiresAt * 1000))
+                getString(
+                    if (expiresAt <= System.currentTimeMillis() / 1000 + 3 * 86400)
+                        R.string.panel_session_expiry_soon else R.string.panel_session_expiry,
+                    date,
+                )
+            }
+    }
+
+    private fun promptAddDevice() {
+        val session = sessionStore.session ?: return
+        if (creatingDevice) return
+        val input = EditText(this).apply {
+            hint = getString(R.string.panel_device_name_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine()
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.panel_add_device)
+            .setMessage(R.string.panel_add_device_message)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.panel_create, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty() && !name.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]{0,31}"))) {
+                    input.error = getString(R.string.panel_device_name_invalid)
+                    return@setOnClickListener
+                }
+                if (sessionStore.session != session || creatingDevice) {
+                    dialog.dismiss()
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                createDevice(session, name.ifEmpty { null })
+            }
+        }
+        dialog.show()
+    }
+
+    private fun createDevice(session: PanelSession, name: String?) {
+        creatingDevice = true
+        binding.addDeviceButton.isEnabled = false
         lifecycleScope.launch {
             try {
-                api.toggleConfig(session.server, session.token, config.id)
-            } catch (e: PanelApiException) {
-                toast(e.message ?: getString(R.string.panel_error_connect))
-            } finally {
+                // No device_id: the new peer belongs to a different device.
+                val config = api.createConfig(session.server, session.token, name, null)
+                if (sessionStore.session != session) return@launch
+                AlertDialog.Builder(this@PanelActivity)
+                    .setTitle(R.string.panel_device_created)
+                    .setMessage(getString(R.string.panel_device_created_message, config.name))
+                    .setNegativeButton(android.R.string.ok, null)
+                    .setPositiveButton(R.string.panel_config_qr) { _, _ ->
+                        if (sessionStore.session == session) showQr(config)
+                    }
+                    .show()
                 loadConfigs()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PanelApiException) {
+                if (sessionStore.session == session) toast(e.message ?: getString(R.string.panel_error_connect))
+            } catch (e: Exception) {
+                if (sessionStore.session == session) {
+                    toast(getString(R.string.panel_create_uncertain))
+                    loadConfigs()
+                }
+            } finally {
+                creatingDevice = false
+                binding.addDeviceButton.isEnabled = true
             }
         }
     }
 
     private fun showActions(config: PanelConfig) {
         val session = sessionStore.session ?: return
-        val linked = links.tunnelName(session, config.id) != null
         val items =
             arrayOf(
-                getString(R.string.panel_routing),
-                getString(R.string.panel_stats),
-                getString(if (linked) R.string.panel_config_update else R.string.panel_config_import),
                 getString(R.string.panel_config_share),
                 getString(R.string.panel_config_qr),
                 getString(R.string.panel_config_delete),
@@ -252,28 +356,12 @@ class PanelActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 if (sessionStore.session != session) return@setItems
                 when (which) {
-                    0 ->
-                        startActivity(
-                            Intent(this, PanelRoutingActivity::class.java)
-                                .putExtra(PanelRoutingActivity.EXTRA_CONFIG_ID, config.id)
-                                .putExtra(PanelRoutingActivity.EXTRA_CONFIG_NAME, config.name),
-                        )
-                    1 ->
-                        startActivity(
-                            Intent(this, PanelStatsActivity::class.java)
-                                .putExtra(PanelStatsActivity.EXTRA_CONFIG_ID, config.id),
-                        )
-                    2 -> importOrUpdate(config)
-                    3 -> shareConfig(config)
-                    4 -> showQr(config)
-                    5 -> confirmDelete(config)
+                    0 -> shareConfig(config)
+                    1 -> showQr(config)
+                    2 -> confirmDelete(config)
                 }
             }
             .show()
-    }
-
-    private fun importOrUpdate(config: PanelConfig) {
-        lifecycleScope.launch { importConfig(config, quiet = false) }
     }
 
     private fun confirmDelete(config: PanelConfig) {
@@ -440,13 +528,15 @@ class PanelActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val config = configs[position]
             holder.item.configName.text = config.name
+            val session = sessionStore.session
+            val thisDevice = session != null && (
+                (config.deviceId.isNotBlank() && config.deviceId.equals(device.deviceId, ignoreCase = true)) ||
+                    (config.deviceId.isBlank() && links.ownConfigId(session) == config.id &&
+                        links.tunnelName(session, config.id) != null)
+                )
+            holder.item.configThisDevice.visibility = if (thisDevice) View.VISIBLE else View.GONE
             holder.item.configIp.text =
                 if (config.remoteIp.isBlank()) config.ip else "${config.ip} • ${config.remoteIp}"
-            holder.item.configEnabled.setOnCheckedChangeListener(null)
-            holder.item.configEnabled.isChecked = config.enabled
-            holder.item.configEnabled.setOnCheckedChangeListener { _, checked ->
-                toggleConfig(config, checked)
-            }
             holder.item.configTraffic.text =
                 getString(
                     R.string.panel_traffic,
@@ -455,7 +545,13 @@ class PanelActivity : AppCompatActivity() {
                 )
             holder.item.configHandshake.text = formatHandshake(config.handshake)
             holder.item.configMore.setOnClickListener { showActions(config) }
-            holder.item.root.setOnClickListener { showActions(config) }
+            holder.item.root.setOnClickListener {
+                startActivity(
+                    Intent(this@PanelActivity, PanelRoutingActivity::class.java)
+                        .putExtra(PanelRoutingActivity.EXTRA_CONFIG_ID, config.id)
+                        .putExtra(PanelRoutingActivity.EXTRA_CONFIG_NAME, config.name),
+                )
+            }
         }
 
         override fun getItemCount(): Int = configs.size

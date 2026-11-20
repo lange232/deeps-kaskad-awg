@@ -24,6 +24,15 @@
             android:textAppearance="?attr/textAppearanceBodyLarge" />
 
         <TextView
+            android:id="@+id/config_this_device"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/panel_this_device"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorPrimary"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/config_ip"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -49,16 +58,12 @@
             android:textColor="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/config_enabled"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content" />
-
-    <com.google.android.material.button.MaterialButton
+    <ImageButton
         android:id="@+id/config_more"
-        style="@style/Widget.Material3.Button.TextButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:minWidth="48dp"
-        android:text="@string/panel_more" />
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/panel_more"
+        android:src="@drawable/ic_panel_more"
+        android:tint="?attr/colorOnSurface" />
 </LinearLayout>

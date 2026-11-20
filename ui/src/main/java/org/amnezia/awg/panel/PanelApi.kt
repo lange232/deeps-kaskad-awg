@@ -68,6 +68,7 @@ data class PanelLoginResult(
     val configs: List<PanelConfig>,
     /** False for panels older than 0.4.0, which have no `configs` in the login response. */
     val supportsConfigs: Boolean,
+    val expiresAt: Long? = null,
 )
 
 /**
@@ -108,6 +109,7 @@ class PanelApi(private val context: Context) {
                 email = json.optString("email"),
                 configs = configs?.let(::parseConfigs).orEmpty(),
                 supportsConfigs = configs != null,
+                expiresAt = json.optLong("expires_at", 0).takeIf { it > 0 },
             )
         }
 
