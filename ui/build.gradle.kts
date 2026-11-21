@@ -19,6 +19,30 @@ val signingProperties: Properties =
 val keystorePath: String? = signingProperties.getProperty("KEY_STORE_PATH")
 val keystoreFile: File? = keystorePath?.let { rootProject.file(it) }?.takeIf { it.exists() }
 
+// A build for a specific provider may pre-fill the panel address. The address itself is a local
+// setting: it lives in the gitignored local.properties as BRANDED_SERVER and never in the sources,
+// so the same build tooling stays public while the deployment stays private.
+val brandedServer: String = signingProperties.getProperty("BRANDED_SERVER").orEmpty().trim()
+val brandedServerLiteral: String =
+    "\"" + brandedServer.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val appVersionName: String = providers.gradleProperty("amneziawgVersionName").get()
+
+/**
+ * versionCode is derived from versionName so the two can never disagree:
+ * `major * 10 000 + minor * 100 + patch`, then two digits for an optional fourth segment.
+ * `0.4.12` → 41200, `0.4.12.1` → 41201, `0.4.13` → 41300, `0.5.0` → 50000.
+ */
+fun versionCodeOf(name: String): Int {
+    val parts = name.split('.')
+    require(parts.size in 3..4 && parts.all { it.matches(Regex("0|[1-9][0-9]*")) })
+    val values = parts.map { it.toLong() }
+    require(values[0] <= 2100 && values.drop(1).all { it <= 99 })
+    val code = ((values[0] * 10_000 + values[1] * 100 + values[2]) * 100) + values.getOrElse(3) { 0 }
+    require(code in 1..2_100_000_000L)
+    return code.toInt()
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -35,9 +59,10 @@ android {
     defaultConfig {
         applicationId = appId
         targetSdk = 36
-        versionCode = providers.gradleProperty("amneziawgVersionCode").get().toInt()
-        versionName = providers.gradleProperty("amneziawgVersionName").get()
+        versionName = appVersionName
+        versionCode = versionCodeOf(appVersionName)
         buildConfigField("int", "MIN_SDK_VERSION", minSdk.toString())
+        buildConfigField("String", "DEFAULT_SERVER", brandedServerLiteral)
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -105,6 +130,7 @@ dependencies {
     implementation(libs.google.material)
     implementation(libs.zxing.android.embedded)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.okhttp)
     coreLibraryDesugaring(libs.desugarJdkLibs)
 }
 

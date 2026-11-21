@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -22,6 +23,9 @@ import org.amnezia.awg.panel.PanelTrafficPoint
 /**
  * Traffic history as two bars per bucket: download (server to client) in the brand peach, upload in
  * a muted grey. Drawn by hand to avoid pulling a charting library into a client this small.
+ *
+ * A tap selects a column and shows its exact time and volumes; the selection is described to
+ * accessibility services instead of relying on the drawn tooltip.
  */
 class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -32,12 +36,22 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
             color = GRID
             strokeWidth = 1f
         }
+    private val highlightPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = HIGHLIGHT
+            strokeWidth = 1f
+        }
+    private val tooltipPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = TOOLTIP_BG
+        }
     private val labelPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = LABEL
             textSize = 10f * resources.displayMetrics.scaledDensity
         }
     private val barRect = RectF()
+    private val tooltipRect = RectF()
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
 
@@ -45,10 +59,17 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
     private var spanHours: Int = 24
     private var stepSeconds: Int = 300
 
+    private var buckets: List<Bucket> = emptyList()
+    private var chartLeft: Float = 0f
+    private var slotWidth: Float = 0f
+    private var selectedIndex: Int = -1
+
     fun setPoints(newPoints: List<PanelTrafficPoint>, hours: Int = 24, step: Int = 300) {
         points = newPoints
         spanHours = hours
         stepSeconds = step.coerceAtLeast(1)
+        selectedIndex = -1
+        contentDescription = context.getString(R.string.panel_stats_chart_description)
         invalidate()
     }
 
@@ -62,10 +83,12 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
 
         if (points.isEmpty()) {
             canvas.drawText(context.getString(R.string.panel_stats_no_history), padLeft, height / 2f, labelPaint)
+            buckets = emptyList()
             return
         }
 
-        val buckets = bucketize(points, spanHours, stepSeconds)
+        buckets = bucketize(points, spanHours, stepSeconds)
+        chartLeft = padLeft
         val maxValue = niceCeiling(buckets.maxOfOrNull { max(it.download, it.upload) } ?: 1L)
         val baseline = 8f + chartHeight
 
@@ -83,6 +106,7 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
         }
 
         val slot = chartWidth / buckets.size
+        slotWidth = slot
         val barWidth = max(1.5f, slot * 0.36f)
         buckets.forEachIndexed { index, bucket ->
             val center = padLeft + slot * index + slot / 2f
@@ -98,6 +122,12 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
             canvas.drawRect(barRect, downloadPaint)
             barRect.set(center + 0.5f, baseline - uploadHeight, center + barWidth + 0.5f, baseline)
             canvas.drawRect(barRect, uploadPaint)
+        }
+
+        if (selectedIndex in buckets.indices) {
+            val center = padLeft + slot * selectedIndex + slot / 2f
+            canvas.drawLine(center, 8f, center, baseline, highlightPaint)
+            drawTooltip(canvas, buckets[selectedIndex])
         }
 
         // Time labels at both ends of the range; a long range also needs the date.
@@ -117,6 +147,67 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
             labelPaint,
         )
     }
+
+    /** A tap picks the column under the finger; a tap outside the plot clears the tooltip. */
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (points.isEmpty() || buckets.isEmpty()) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                if (selectAt(event.x)) return true
+            }
+            MotionEvent.ACTION_UP -> {
+                performClick()
+                return true
+            }
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    private fun selectAt(x: Float): Boolean {
+        if (slotWidth <= 0f) return false
+        val index = ((x - chartLeft) / slotWidth).toInt()
+        val target = if (index in buckets.indices) index else -1
+        if (target == selectedIndex) return false
+        selectedIndex = target
+        contentDescription =
+            if (target >= 0) describe(buckets[target]) else context.getString(R.string.panel_stats_chart_description)
+        invalidate()
+        return true
+    }
+
+    private fun describe(bucket: Bucket): String =
+        context.getString(
+            R.string.panel_stats_point_description,
+            formatTime(bucket.start),
+            formatBytes(bucket.download),
+            formatBytes(bucket.upload),
+        )
+
+    private fun drawTooltip(canvas: Canvas, bucket: Bucket) {
+        val text =
+            context.getString(
+                R.string.panel_stats_point,
+                formatTime(bucket.start),
+                formatBytes(bucket.download),
+                formatBytes(bucket.upload),
+            )
+        val padding = 6f * resources.displayMetrics.density
+        val textWidth = labelPaint.measureText(text)
+        val height = labelPaint.textSize + padding * 2
+        val left = chartLeft
+        val top = 8f
+        tooltipRect.set(left, top, left + textWidth + padding * 2, top + height)
+        canvas.drawRoundRect(tooltipRect, 4f, 4f, tooltipPaint)
+        canvas.drawText(text, left + padding, top + padding + labelPaint.textSize * 0.8f, labelPaint)
+    }
+
+    private fun formatTime(ts: Long): String =
+        if (spanHours >= 24) dateFormat.format(Date(ts * 1000)) else timeFormat.format(Date(ts * 1000))
 
     private class Bucket(val start: Long, var download: Long, var upload: Long)
 
@@ -182,5 +273,7 @@ class TrafficChartView(context: Context, attrs: AttributeSet? = null) : View(con
         val UPLOAD = Color.parseColor("#8D9D9F")
         val GRID = Color.parseColor("#29FFFFFF")
         val LABEL = Color.parseColor("#8D9D9F")
+        val HIGHLIGHT = Color.parseColor("#66FAB283")
+        val TOOLTIP_BG = Color.parseColor("#E6262626")
     }
 }

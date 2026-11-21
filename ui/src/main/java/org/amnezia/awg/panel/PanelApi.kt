@@ -51,8 +51,23 @@ data class PanelExit(
     val rttMs: Double?,
     /** Default server route, not necessarily the route used by this configuration. */
     val active: Boolean?,
+    /** True when this configuration's own routing table points at this exit. */
+    val current: Boolean?,
+    /** Interface of the configuration's route, for diagnostics. */
+    val currentIface: String?,
     /** True when this configuration is forced onto this exit. */
     val pinned: Boolean?,
+)
+
+/** An Android build the panel currently serves, as described by `GET /api/android`. */
+data class PanelUpdate(
+    val packageName: String,
+    val versionCode: Int,
+    val versionName: String,
+    val minSdk: Int?,
+    val url: String,
+    val sha256: String,
+    val size: Long,
 )
 
 /** A routed subnet the account is granted, with its state for one configuration. */
@@ -96,7 +111,7 @@ class PanelApiException(val status: Int, message: String) : Exception(message)
  */
 class PanelApi(private val context: Context) {
 
-    private val pinnedTrustManager: X509TrustManager? by lazy { loadPinnedTrustManager() }
+    internal val pinnedTrustManager: X509TrustManager? by lazy { loadPinnedTrustManager() }
 
     suspend fun login(server: String, email: String, password: String): PanelLoginResult =
         withContext(Dispatchers.IO) {
@@ -179,6 +194,8 @@ class PanelApi(private val context: Context) {
                     rttMs = if (exit.isNull("rtt_ms")) null else exit.optDouble("rtt_ms"),
                     active = if (exit.isNull("active") || !exit.optBoolean("status_fresh", true)) null
                         else exit.optBoolean("active"),
+                    current = if (exit.isNull("current")) null else exit.optBoolean("current"),
+                    currentIface = if (exit.isNull("current_iface")) null else exit.optString("current_iface"),
                     pinned = if (exit.isNull("pinned")) null else exit.optBoolean("pinned"),
                 )
             }
@@ -271,6 +288,23 @@ class PanelApi(private val context: Context) {
         )
     }
 
+    /**
+     * The Android build the panel serves. HTTP errors are reported separately to the caller.
+     */
+    suspend fun fetchUpdate(server: String): PanelUpdate = withContext(Dispatchers.IO) {
+        val body = execute(server, "/api/android", "GET", null)
+        val json = JSONObject(body)
+        PanelUpdate(
+            packageName = json.optString("package"),
+            versionCode = json.optInt("versionCode"),
+            versionName = json.optString("versionName"),
+            minSdk = if (json.isNull("minSdk")) null else json.optInt("minSdk"),
+            url = json.optString("url"),
+            sha256 = json.optString("sha256").lowercase(),
+            size = json.optLong("size"),
+        )
+    }
+
     /** Best-effort token revocation; the result does not matter for the caller. */
     suspend fun logout(server: String, token: String) {
         withContext(Dispatchers.IO) {
@@ -296,11 +330,7 @@ class PanelApi(private val context: Context) {
                 readTimeout = 30_000
                 setRequestProperty("Accept", "application/json")
                 token?.let { setRequestProperty("Authorization", "Bearer $it") }
-                pinnedTrustManager?.let { manager ->
-                    val sslContext =
-                        SSLContext.getInstance("TLS").apply { init(null, arrayOf(manager), null) }
-                    sslSocketFactory = sslContext.socketFactory
-                }
+                configureTls(this)
                 if (form != null) {
                     doOutput = true
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
@@ -322,6 +352,13 @@ class PanelApi(private val context: Context) {
             return text
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun configureTls(connection: HttpsURLConnection) {
+        pinnedTrustManager?.let { manager ->
+            val sslContext = SSLContext.getInstance("TLS").apply { init(null, arrayOf(manager), null) }
+            connection.sslSocketFactory = sslContext.socketFactory
         }
     }
 

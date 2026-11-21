@@ -95,6 +95,7 @@ class PanelRoutingActivity : AppCompatActivity() {
         }
         binding.rangeGroup.addOnButtonCheckedListener { _, id, checked ->
             if (checked) selectRange(when (id) {
+                R.id.range_1 -> 1
                 R.id.range_3 -> 3
                 R.id.range_7d -> 168
                 else -> 24
@@ -180,7 +181,8 @@ class PanelRoutingActivity : AppCompatActivity() {
     private fun selectRange(newHours: Int) {
         if (hours == newHours) return
         hours = newHours
-        val buttons = listOf(binding.range3 to 3, binding.range24 to 24, binding.range7d to 168)
+        val buttons =
+            listOf(binding.range1 to 1, binding.range3 to 3, binding.range24 to 24, binding.range7d to 168)
         buttons.forEach { (button, range) ->
             val active = range == newHours
             button.backgroundTintList = ColorStateList.valueOf(if (active) Color.parseColor("#FAB283") else Color.TRANSPARENT)
@@ -190,16 +192,30 @@ class PanelRoutingActivity : AppCompatActivity() {
         val generation = ++historyGeneration
         binding.statsChart.visibility = View.INVISIBLE
         binding.statsProgress.visibility = View.VISIBLE
+        binding.statsPeriodTotals.text = ""
         historyJob = lifecycleScope.launch {
             try {
                 val traffic = api.fetchTraffic(session.server, session.token, configId, newHours)
                 if (generation != historyGeneration || sessionStore.session != session) return@launch
-                binding.statsChart.setPoints(traffic?.points.orEmpty(), newHours, traffic?.stepSeconds ?: 300)
+                val loadedPoints = traffic?.points.orEmpty()
+                binding.statsChart.setPoints(loadedPoints, newHours, traffic?.stepSeconds ?: 300)
                 binding.statsChart.visibility = View.VISIBLE
+                binding.statsPeriodTotals.text =
+                    if (loadedPoints.isEmpty()) {
+                        getString(R.string.panel_stats_no_history)
+                    } else {
+                        getString(
+                            R.string.panel_stats_period_totals,
+                            rangeLabel(newHours),
+                            formatBytes(loadedPoints.sumOf { it.tx }),
+                            formatBytes(loadedPoints.sumOf { it.rx }),
+                        )
+                    }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (generation == historyGeneration) {
+                    binding.statsPeriodTotals.text = ""
                     toast((e as? PanelApiException)?.message ?: getString(R.string.panel_error_connect))
                 }
             } finally {
@@ -207,6 +223,16 @@ class PanelRoutingActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun rangeLabel(hours: Int): String =
+        getString(
+            when (hours) {
+                1 -> R.string.panel_stats_range_1
+                3 -> R.string.panel_stats_range_3
+                168 -> R.string.panel_stats_range_7d
+                else -> R.string.panel_stats_range_24
+            },
+        )
 
     private fun formatBytes(bytes: Long): String {
         if (bytes < 1024) return "$bytes B"
@@ -357,10 +383,11 @@ class PanelRoutingActivity : AppCompatActivity() {
         binding.exitsList.removeAllViews()
         exits.forEachIndexed { position, exit ->
             val item = ItemPanelExitBinding.inflate(LayoutInflater.from(this), binding.exitsList, false)
+            item.exitDivider.visibility = if (position == exits.lastIndex) View.GONE else View.VISIBLE
             item.exitName.text = exit.name
             item.exitComment.text = exit.country
             item.exitComment.visibility = if (exit.country.isBlank()) View.GONE else View.VISIBLE
-            item.exitActive.visibility = if (exit.active == true) View.VISIBLE else View.GONE
+            item.exitActive.visibility = if (exit.current == true) View.VISIBLE else View.GONE
             item.exitPinned.visibility = if (exit.pinned == true) View.VISIBLE else View.GONE
             val canPin = !working && !pendingLocalRefresh && !routeResultUncertain
             item.root.setOnClickListener { if (canPin) showExitPinActions(exit) }

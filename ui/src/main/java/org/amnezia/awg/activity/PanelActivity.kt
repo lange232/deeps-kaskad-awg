@@ -5,8 +5,11 @@
 
 package org.amnezia.awg.activity
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -18,7 +21,13 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.os.BundleCompat
+import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.journeyapps.barcodescanner.BarcodeEncoder
@@ -27,10 +36,12 @@ import java.util.Date
 import java.text.DateFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import org.amnezia.awg.Application
+import org.amnezia.awg.BuildConfig
 import org.amnezia.awg.R
 import org.amnezia.awg.databinding.ActivityPanelBinding
 import org.amnezia.awg.databinding.DialogAddConfigBinding
@@ -44,6 +55,10 @@ import org.amnezia.awg.panel.PanelDevice
 import org.amnezia.awg.panel.PanelExit
 import org.amnezia.awg.panel.PanelSession
 import org.amnezia.awg.panel.PanelSessionStore
+import org.amnezia.awg.panel.Updates
+import org.amnezia.awg.panel.UpdateDownloadService
+import org.amnezia.awg.panel.UpdateCheck
+import org.amnezia.awg.panel.UpdateRequest
 import org.amnezia.awg.model.ObservableTunnel
 import org.amnezia.awg.split.SplitTunnel
 
@@ -64,6 +79,11 @@ class PanelActivity : AppCompatActivity() {
 
     private var accountExitsJob: Job? = null
     private var requestGeneration = 0
+    private var updateJob: Job? = null
+    private var installJob: Job? = null
+    private var pendingInstall: UpdateRequest? = null
+    private var updatePanel: String? = null
+    private var updateOffer: UpdateRequest? = null
     private var exitsGeneration = 0
     private var creatingDevice = false
     private var loadingConfigs = false
@@ -85,10 +105,15 @@ class PanelActivity : AppCompatActivity() {
         binding.configList.layoutManager = LinearLayoutManager(this)
         binding.configList.adapter = adapter
 
+        pendingInstall = savedInstanceState?.let {
+            BundleCompat.getParcelable(it, PENDING_INSTALL, Intent::class.java)
+        }?.let { UpdateDownloadService.requestFromIntent(it, packageName) }
+
         binding.signInButton.setOnClickListener { signIn() }
         binding.toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.account_refresh -> { loadConfigs(); true }
+                R.id.account_update_check -> { checkForUpdates(force = true); true }
                 R.id.account_sign_out -> { confirmSignOut(); true }
                 else -> false
             }
@@ -102,13 +127,26 @@ class PanelActivity : AppCompatActivity() {
         val session = sessionStore.session
         if (session == null) {
             showSignedOut()
-            binding.serverInput.setText("https://")
+            binding.serverInput.setText(defaultServer())
             binding.serverInput.setSelection(binding.serverInput.text?.length ?: 0)
             binding.emailInput.setText(sessionStore.lastEmail)
         } else {
             binding.serverInput.setText(session.server)
             binding.emailInput.setText(session.email)
             showSignedIn()
+        }
+        binding.serverInput.doAfterTextChanged { syncUpdatePanel() }
+        syncUpdatePanel()
+        observeDownload()
+        handleInstallIntent(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingInstall?.let {
+            val saved = Intent()
+            UpdateDownloadService.putRequest(saved, it)
+            outState.putParcelable(PENDING_INSTALL, saved)
         }
     }
 
@@ -122,6 +160,29 @@ class PanelActivity : AppCompatActivity() {
         if (sessionStore.session != null) {
             loadConfigs()
         }
+        checkForUpdates(force = false)
+        pendingInstall?.let { request ->
+            if (Updates.canInstall(this)) installDownloaded(request)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleInstallIntent(intent)
+    }
+
+    private fun handleInstallIntent(intent: Intent) {
+        if (intent.action != UpdateDownloadService.ACTION_INSTALL) return
+        val request = UpdateDownloadService.requestFromIntent(intent, packageName) ?: return
+        intent.action = null
+        // The explicit tap also identifies the panel when reopening a signed-out universal build.
+        if (currentUpdatePanel() == null && sessionStore.session == null)
+            binding.serverInput.setText(request.server)
+        if (request.server != currentUpdatePanel()) {
+            toast(getString(R.string.panel_update_different_panel))
+            return
+        }
+        installDownloaded(request)
     }
 
     // ------------------------------------------------------------------ session
@@ -149,6 +210,7 @@ class PanelActivity : AppCompatActivity() {
                 importConfig(own, quiet = true, own = true)
                 showSignedIn()
                 loadConfigs()
+                checkForUpdates(force = false)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PanelApiException) {
@@ -185,12 +247,18 @@ class PanelActivity : AppCompatActivity() {
         if (session != null) lifecycleScope.launch { api.logout(session.server, session.token) }
         configs.clear()
         adapter.notifyDataSetChanged()
-        // The address is typed by the user, never carried over from a previous session.
-        binding.serverInput.setText("https://")
+        // The address is typed by the user or comes from the local build setting, never carried over
+        // from a previous session.
+        binding.serverInput.setText(defaultServer())
         binding.serverInput.setSelection(binding.serverInput.text?.length ?: 0)
         binding.passwordInput.text?.clear()
         showSignedOut()
+        syncUpdatePanel()
     }
+
+    /** A provider build may pre-fill its own address; ordinary builds start with the scheme only. */
+    private fun defaultServer(): String =
+        BuildConfig.DEFAULT_SERVER.trim().ifBlank { "https://" }
 
     private suspend fun resolveConfig(session: PanelSession, accountConfigs: List<PanelConfig>): PanelConfig {
         accountConfigs.firstOrNull { it.deviceId.equals(device.deviceId, true) }?.let { return it }
@@ -238,6 +306,7 @@ class PanelActivity : AppCompatActivity() {
                     configs.clear()
                     adapter.notifyDataSetChanged()
                     showSignedOut()
+                    syncUpdatePanel()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -286,12 +355,13 @@ class PanelActivity : AppCompatActivity() {
         binding.accountExitsList.removeAllViews()
         binding.accountExitsMessage.visibility = if (exits.isEmpty()) View.VISIBLE else View.GONE
         if (exits.isEmpty()) binding.accountExitsMessage.setText(R.string.panel_exits_auto)
-        exits.forEach { exit ->
+        exits.forEachIndexed { index, exit ->
             val item = ItemAccountExitBinding.inflate(layoutInflater, binding.accountExitsList, false)
+            item.exitDivider.visibility = if (index == exits.lastIndex) View.GONE else View.VISIBLE
             item.exitName.text = exit.name
             item.exitCountry.text = exit.country
             item.exitCountry.visibility = if (exit.country.isBlank()) View.GONE else View.VISIBLE
-            item.exitActive.visibility = if (exit.active == true) View.VISIBLE else View.GONE
+            item.exitActive.visibility = if (exit.current == true) View.VISIBLE else View.GONE
             val latency = exit.rttMs?.takeIf { it.isFinite() && it >= 0 }
             item.exitLatency.text = latency?.let { getString(R.string.panel_exit_latency, it.toInt()) } ?: "—"
             item.exitLatency.contentDescription = if (latency == null) {
@@ -311,7 +381,6 @@ class PanelActivity : AppCompatActivity() {
             binding.accountExitsList.addView(item.root)
         }
     }
-
     private fun showConfigs(loaded: List<PanelConfig>) {
         val session = sessionStore.session ?: return
         configs.clear()
@@ -333,6 +402,163 @@ class PanelActivity : AppCompatActivity() {
                 )
             }
         updateCreationControls(session)
+    }
+
+    // ------------------------------------------------------------------ updates
+
+    private fun currentUpdatePanel(): String? =
+        Updates.panelAddress(sessionStore.session?.server ?: binding.serverInput.text?.toString().orEmpty())
+
+    private fun syncUpdatePanel() {
+        val server = currentUpdatePanel()
+        if (server == updatePanel) return
+        if (updatePanel != null) {
+            installJob?.cancel()
+            pendingInstall = null
+        }
+        updatePanel = server
+        updateJob?.cancel()
+        updateOffer = null
+        renderUpdateCard()
+    }
+
+    /** Checks at most once a day; the manual menu entry bypasses the interval. */
+    private fun checkForUpdates(force: Boolean) {
+        syncUpdatePanel()
+        val server = updatePanel
+        if (server == null) {
+            if (force) toast(getString(R.string.panel_update_enter_server))
+            return
+        }
+        if (!force && updateJob?.isActive == true) return
+        if (force) toast(getString(R.string.panel_update_checking))
+        updateJob?.cancel()
+        updateJob = lifecycleScope.launch {
+            val found = Updates.find(applicationContext, api, server, force)
+            if (currentUpdatePanel() != server) return@launch
+            when (found) {
+                is UpdateCheck.Available -> updateOffer = UpdateRequest(server, found.update)
+                UpdateCheck.Current -> {
+                    updateOffer = null
+                    if (force) toast(getString(R.string.panel_update_none))
+                }
+                UpdateCheck.Unavailable -> if (force) toast(getString(R.string.panel_update_unavailable))
+                UpdateCheck.Invalid -> {
+                    updateOffer = null
+                    if (force) toast(getString(R.string.panel_update_incompatible))
+                }
+                UpdateCheck.Error -> if (force) toast(getString(R.string.panel_update_check_failed))
+                UpdateCheck.Deferred -> Unit
+            }
+            renderUpdateCard()
+        }
+    }
+
+    private fun observeDownload() {
+        lifecycleScope.launch {
+            var lastState: UpdateDownloadService.State? = null
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                UpdateDownloadService.state.collect { state ->
+                    if (state is UpdateDownloadService.State.Failed && state !== lastState &&
+                        state.request.server == currentUpdatePanel()) toast(state.message)
+                    lastState = state
+                    renderUpdateCard(state)
+                }
+            }
+        }
+    }
+
+    private fun renderUpdateCard(state: UpdateDownloadService.State = UpdateDownloadService.state.value) {
+        val server = currentUpdatePanel()
+        val running = state as? UpdateDownloadService.State.Running
+        if (running != null && running.request.server == server) {
+            binding.updateCard.visibility = View.VISIBLE
+            binding.updateProgress.visibility = View.VISIBLE
+            binding.updateProgress.progress = running.progress
+            binding.updateTitle.text = getString(R.string.panel_update_downloading, running.progress)
+            binding.updateButton.setText(R.string.panel_update_cancel)
+            binding.updateButton.isEnabled = !running.cancelling
+            binding.updateButton.setOnClickListener {
+                if (currentUpdatePanel() != running.request.server) return@setOnClickListener
+                UpdateDownloadService.cancel(running.request)
+            }
+            return
+        }
+
+        val offer = updateOffer?.takeIf { it.server == server }
+        val ready = server?.let { Updates.ready(this, it) }
+        binding.updateProgress.visibility = View.GONE
+        binding.updateButton.setOnClickListener(null)
+        if (ready != null && (offer == null || offer.update.versionCode < ready.update.versionCode ||
+                offer.update.sha256 == ready.update.sha256)) {
+            binding.updateCard.visibility = View.VISIBLE
+            binding.updateTitle.setText(R.string.panel_update_ready)
+            binding.updateButton.setText(R.string.panel_update_apply)
+            binding.updateButton.isEnabled = installJob?.isActive != true
+            binding.updateButton.setOnClickListener { installDownloaded(ready) }
+        } else if (offer != null) {
+            binding.updateCard.visibility = View.VISIBLE
+            binding.updateTitle.text = getString(R.string.panel_update_available, offer.update.versionName)
+            binding.updateButton.setText(R.string.panel_update_install)
+            binding.updateButton.isEnabled = running == null
+            binding.updateButton.setOnClickListener { startUpdate(offer) }
+        } else {
+            binding.updateCard.visibility = View.GONE
+        }
+    }
+
+    private fun startUpdate(request: UpdateRequest) {
+        if (request.server != currentUpdatePanel() ||
+            UpdateDownloadService.state.value is UpdateDownloadService.State.Running) return
+        try {
+            UpdateDownloadService.start(this, request)
+            requestNotificationPermission()
+        } catch (_: RuntimeException) {
+            toast(getString(R.string.panel_update_download_failed))
+        }
+    }
+
+    /** Without this the progress notification stays hidden on Android 13+; the download still runs. */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+    }
+
+    private fun installDownloaded(request: UpdateRequest) {
+        if (request.server != currentUpdatePanel() || installJob?.isActive == true) return
+        installJob = lifecycleScope.launch {
+            try {
+                val file = try {
+                    Updates.verifiedFile(this@PanelActivity, request)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (request.server != currentUpdatePanel() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+                    return@launch
+                pendingInstall = null
+                if (file == null) {
+                    Updates.forgetReady(this@PanelActivity, request)
+                    toast(getString(R.string.panel_update_signature))
+                } else if (!Updates.canInstall(this@PanelActivity)) {
+                    pendingInstall = request
+                    if (!Updates.openInstallSettings(this@PanelActivity)) {
+                        pendingInstall = null
+                        toast(getString(R.string.panel_update_installer_unavailable))
+                    } else toast(getString(R.string.panel_update_allow_install))
+                } else if (!Updates.install(this@PanelActivity, file)) {
+                    toast(getString(R.string.panel_update_installer_unavailable))
+                }
+            } finally {
+                installJob = null
+                renderUpdateCard()
+            }
+        }
+        renderUpdateCard()
     }
 
     private fun creationKey(session: PanelSession): String =
@@ -744,7 +970,8 @@ class PanelActivity : AppCompatActivity() {
         return getString(R.string.panel_handshake_ago, text)
     }
 
-    private companion object {
-        const val TUNNEL_NAME_MAX = 15
+    companion object {
+        private const val PENDING_INSTALL = "pending_install_update"
+        private const val TUNNEL_NAME_MAX = 15
     }
 }
