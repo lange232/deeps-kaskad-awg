@@ -368,6 +368,7 @@
     <string name="panel_stats_legend">↓ скачано · ↑ отдано</string>
     <string name="panel_stats_no_history">Истории пока нет</string>
     <string name="panel_stats_range_24">24 ч</string>
+    <string name="panel_stats_range_1">1 ч</string>
     <string name="panel_stats_range_3">3 ч</string>
     <string name="panel_configuration">Конфигурация</string>
     <string name="panel_config_enabled">Конфигурация включена</string>
@@ -375,10 +376,40 @@
     <string name="panel_save_routes">Сохранить маршруты</string>
     <string name="panel_toggle_uncertain">Не удалось подтвердить состояние конфигурации. Обновите экран и проверьте его перед повторной попыткой.</string>
     <string name="panel_stats_range_7d">7 дней</string>
+    <string name="panel_stats_point">%1$s · ↓ %2$s · ↑ %3$s</string>
+    <string name="panel_stats_point_description">%1$s, скачано %2$s, отдано %3$s</string>
+    <string name="panel_stats_chart_description">История трафика. Нажмите на столбик, чтобы увидеть значения.</string>
+    <string name="panel_stats_period_totals">За %1$s: ↓ %2$s · ↑ %3$s</string>
     <string name="panel_stats_state_on">Включена</string>
     <string name="panel_stats_state_off">Выключена</string>
     <!-- licenses -->
     <string name="licenses_title">Лицензии и исходный код</string>
     <string name="licenses_summary">Лицензии компонентов и где взять исходники</string>
     <string name="licenses_body">DEEPS KASKAD - форк AmneziaWG for Android, который, в свою очередь, является форком официального клиента WireGuard for Android.\n\nИсходный код этого форка: https://github.com/lange232/deeps-kaskad-awg\n\nКомпоненты:\n- интерфейс и Java-код: Apache License 2.0\n- amneziawg-go (libwg-go.so): MIT License\n- amneziawg-tools (libwg.so, libwg-quick.so): GNU GPL v2\n- termux-elf-cleaner: GNU GPL v3, только при сборке\n\nПолные тексты лицензий лежат вместе с исходным кодом (каталог licenses/).\n\nWireGuard - зарегистрированный товарный знак Jason A. Donenfeld; Amnezia и AmneziaWG - знаки проекта Amnezia. Приложение не связано с ними и не одобрено ими.</string>
+
+    <!-- updates -->
+    <string name="panel_update_available">Доступно обновление %1$s</string>
+    <string name="panel_update_install">Обновить</string>
+    <string name="panel_update_apply">Установить</string>
+    <string name="panel_update_cancel">Отмена</string>
+    <string name="panel_update_check">Проверить обновление</string>
+    <string name="panel_update_checking">Проверка обновлений…</string>
+    <string name="panel_update_none">Установлена последняя версия</string>
+    <string name="panel_update_downloading">Загрузка обновления… %1$d%%</string>
+    <string name="panel_update_download_failed">Не удалось скачать обновление</string>
+    <string name="panel_update_bad_url">Сервер вернул недопустимый адрес обновления</string>
+    <string name="panel_update_size_mismatch">Размер скачанного файла не совпал</string>
+    <string name="panel_update_hash_mismatch">Скачанный файл не прошёл проверку контрольной суммы</string>
+    <string name="panel_update_signature">Скачанный файл подписан другим ключом</string>
+    <string name="panel_update_installer_unavailable">Не удалось открыть системный установщик</string>
+    <string name="panel_update_enter_server">Введите адрес панели для проверки обновлений</string>
+    <string name="panel_update_different_panel">Это обновление скачано с другой панели</string>
+    <string name="panel_update_unavailable">Сейчас обновление на панели недоступно</string>
+    <string name="panel_update_incompatible">Обновление некорректно или несовместимо с устройством</string>
+    <string name="panel_update_check_failed">Не удалось проверить обновления. Попробуйте позже.</string>
+    <string name="panel_update_ready">Обновление скачано</string>
+    <string name="panel_update_ready_hint">Нажмите, чтобы установить проверенное обновление</string>
+    <string name="panel_update_allow_install">Разрешите установку из этого приложения и вернитесь: загрузка продолжится</string>
+    <string name="panel_update_channel">Обновления приложения</string>
+    <string name="panel_update_channel_description">Загрузка обновлений и предложение установки</string>
 </resources>

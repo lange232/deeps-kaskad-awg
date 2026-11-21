@@ -285,8 +285,7 @@
     <string name="panel_email">Email</string>
     <string name="panel_password">Password</string>
     <string name="panel_sign_in">Sign in</string>
-    <string name="panel_sign_out">Sign out of your account</string>
-    <string name="panel_sign_out_confirm">Sign out of your account? Your local tunnels will remain on this device.</string>
+    <string name="panel_sign_out">Sign out of your account</string>    <string name="panel_sign_out_confirm">Sign out of your account? Your local tunnels will remain on this device.</string>
     <string name="panel_configs">Configurations</string>
     <string name="panel_config_count">Configurations: %1$d</string>
     <string name="panel_this_device">This device</string>
@@ -368,6 +367,7 @@
     <string name="panel_stats_legend">↓ download · ↑ upload</string>
     <string name="panel_stats_no_history">No history yet</string>
     <string name="panel_stats_range_24">24 h</string>
+    <string name="panel_stats_range_1">1 h</string>
     <string name="panel_stats_range_3">3 h</string>
     <string name="panel_configuration">Configuration</string>
     <string name="panel_config_enabled">Configuration enabled</string>
@@ -375,10 +375,39 @@
     <string name="panel_save_routes">Save routes</string>
     <string name="panel_toggle_uncertain">Could not confirm the configuration state. Refresh and check it before trying again.</string>
     <string name="panel_stats_range_7d">7 days</string>
-    <string name="panel_stats_state_on">Enabled</string>
+    <string name="panel_stats_point">%1$s · ↓ %2$s · ↑ %3$s</string>
+    <string name="panel_stats_point_description">%1$s, downloaded %2$s, uploaded %3$s</string>
+    <string name="panel_stats_chart_description">Traffic history. Tap a column to see its values.</string>
+    <string name="panel_stats_period_totals">For %1$s: ↓ %2$s · ↑ %3$s</string>    <string name="panel_stats_state_on">Enabled</string>
     <string name="panel_stats_state_off">Disabled</string>
     <!-- licenses -->
     <string name="licenses_title">Licenses and source code</string>
     <string name="licenses_summary">Component licenses and where to get the source</string>
     <string name="licenses_body">DEEPS KASKAD is a fork of AmneziaWG for Android, which is a fork of the official WireGuard for Android client.\n\nSource code of this fork: https://github.com/lange232/deeps-kaskad-awg\n\nComponents:\n- UI and Java code: Apache License 2.0\n- amneziawg-go (libwg-go.so): MIT License\n- amneziawg-tools (libwg.so, libwg-quick.so): GNU GPL v2\n- termux-elf-cleaner: GNU GPL v3, build-time only\n\nFull license texts ship with the source code (repository, folder licenses/).\n\nWireGuard is a registered trademark of Jason A. Donenfeld; Amnezia and AmneziaWG are marks of the Amnezia project. This application is not affiliated with or endorsed by either of them.</string>
+
+    <!-- updates -->
+    <string name="panel_update_available">Update %1$s is available</string>
+    <string name="panel_update_install">Update</string>
+    <string name="panel_update_apply">Install</string>
+    <string name="panel_update_cancel">Cancel</string>
+    <string name="panel_update_check">Check for updates</string>
+    <string name="panel_update_checking">Checking for updates…</string>
+    <string name="panel_update_none">The latest version is installed</string>
+    <string name="panel_update_downloading">Downloading update… %1$d%%</string>
+    <string name="panel_update_download_failed">Could not download the update</string>
+    <string name="panel_update_bad_url">The panel returned an invalid update address</string>
+    <string name="panel_update_size_mismatch">The downloaded file has the wrong size</string>
+    <string name="panel_update_hash_mismatch">The downloaded file failed the checksum check</string>
+    <string name="panel_update_signature">The downloaded file is signed with another key</string>
+    <string name="panel_update_installer_unavailable">Could not open the system installer</string>
+    <string name="panel_update_enter_server">Enter a panel address to check for updates</string>
+    <string name="panel_update_different_panel">This update was downloaded from a different panel</string>
+    <string name="panel_update_unavailable">The panel has no update available right now</string>
+    <string name="panel_update_incompatible">The update is invalid or incompatible with this device</string>
+    <string name="panel_update_check_failed">Could not check for updates. Try again later.</string>
+    <string name="panel_update_ready">Update downloaded</string>
+    <string name="panel_update_ready_hint">Tap to install the verified update</string>
+    <string name="panel_update_allow_install">Allow installs from this app, then return: the update will continue</string>
+    <string name="panel_update_channel">App updates</string>
+    <string name="panel_update_channel_description">Update downloads and install prompts</string>
 </resources>

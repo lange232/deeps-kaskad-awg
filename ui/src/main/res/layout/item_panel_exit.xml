@@ -2,79 +2,96 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingStart="0dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="8dp"
-    android:paddingBottom="8dp">
-
-    <ImageView
-        android:id="@+id/exit_drag"
-        android:layout_width="32dp"
-        android:layout_height="44dp"
-        android:contentDescription="@string/reorder_tunnel"
-        android:padding="4dp"
-        android:src="@drawable/ic_drag_handle" />
-
-    <View
-        android:id="@+id/exit_status"
-        android:layout_width="8dp"
-        android:layout_height="8dp"
-        android:layout_marginEnd="10dp"
-        android:background="@android:color/white" />
+    android:orientation="vertical">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
-        <TextView
-            android:id="@+id/exit_name"
-            android:layout_width="match_parent"
+        <ImageView
+            android:id="@+id/exit_drag"
+            android:layout_width="32dp"
+            android:layout_height="44dp"
+            android:contentDescription="@string/reorder_tunnel"
+            android:padding="4dp"
+            android:src="@drawable/ic_drag_handle" />
+
+        <View
+            android:id="@+id/exit_status"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginEnd="10dp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodyLarge" />
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/exit_comment"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
+            <TextView
+                android:id="@+id/exit_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
 
-        <TextView
-            android:id="@+id/exit_pinned"
+            <TextView
+                android:id="@+id/exit_comment"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/panel_exit_pinned"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="@color/exit_active"
-            android:visibility="gone" />
+            android:layout_marginStart="12dp"
+            android:gravity="end"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/exit_active"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/panel_exit_server_default"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="@color/exit_active"
-            android:visibility="gone" />
+            <TextView
+                android:id="@+id/exit_rtt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:gravity="end"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:id="@+id/exit_active"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/panel_exit_server_default"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="@color/exit_active"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/exit_pinned"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/panel_exit_pinned"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="@color/exit_active"
+                android:visibility="gone" />
+        </LinearLayout>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/exit_rtt"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="4dp"
-        android:fontFamily="monospace"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:textColor="?attr/colorOnSurfaceVariant" />
-
+    <View
+        android:id="@+id/exit_divider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="40dp"
+        android:background="?attr/colorSurfaceVariant" />
 </LinearLayout>
