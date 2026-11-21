@@ -64,7 +64,9 @@
     <color name="tunnel_status_connecting">#FF9800</color>
     <color name="tunnel_status_disconnected">#F44336</color>
     <color name="exit_status_healthy">#6DB58B</color>
+    <color name="panel_label_positive">#6DB58B</color>
     <color name="exit_status_degraded">#FFA478</color>
     <color name="exit_status_down">#CF6679</color>
     <color name="exit_status_unknown">#808080</color>
+    <color name="exit_active">#7DB8F7</color>
 </resources>

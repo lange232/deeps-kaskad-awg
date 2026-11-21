@@ -8,6 +8,10 @@ package org.amnezia.awg.activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,8 +27,6 @@ import java.util.Date
 import java.text.DateFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -33,11 +35,13 @@ import org.amnezia.awg.R
 import org.amnezia.awg.databinding.ActivityPanelBinding
 import org.amnezia.awg.databinding.DialogAddConfigBinding
 import org.amnezia.awg.databinding.ItemPanelConfigBinding
+import org.amnezia.awg.databinding.ItemAccountExitBinding
 import org.amnezia.awg.panel.PanelApi
 import org.amnezia.awg.panel.PanelApiException
 import org.amnezia.awg.panel.PanelConfig
 import org.amnezia.awg.panel.PanelConfigLinks
 import org.amnezia.awg.panel.PanelDevice
+import org.amnezia.awg.panel.PanelExit
 import org.amnezia.awg.panel.PanelSession
 import org.amnezia.awg.panel.PanelSessionStore
 import org.amnezia.awg.model.ObservableTunnel
@@ -58,8 +62,9 @@ class PanelActivity : AppCompatActivity() {
     private lateinit var device: PanelDevice
     private lateinit var links: PanelConfigLinks
 
-    private var refreshJob: Job? = null
+    private var accountExitsJob: Job? = null
     private var requestGeneration = 0
+    private var exitsGeneration = 0
     private var creatingDevice = false
     private var loadingConfigs = false
     private var uncertainListLoaded = false
@@ -115,37 +120,8 @@ class PanelActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (sessionStore.session != null) {
-            startTrafficRefresh()
             loadConfigs()
         }
-    }
-
-    override fun onPause() {
-        refreshJob?.cancel()
-        super.onPause()
-    }
-
-    /** Traffic counters live on the panel, so the list is refreshed while the screen is visible. */
-    private fun startTrafficRefresh() {
-        refreshJob?.cancel()
-        refreshJob =
-            lifecycleScope.launch {
-                while (isActive) {
-                    delay(TRAFFIC_REFRESH_MS)
-                    if (loadingConfigs || creatingDevice) continue
-                    val session = sessionStore.session ?: return@launch
-                    val generation = ++requestGeneration
-                    try {
-                        val loaded = api.fetchConfigs(session.server, session.token)
-                        if (sessionStore.session != session) return@launch
-                        if (generation == requestGeneration) showConfigs(loaded)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // A silent poll: a failed refresh must not interrupt the screen.
-                    }
-                }
-            }
     }
 
     // ------------------------------------------------------------------ session
@@ -173,7 +149,6 @@ class PanelActivity : AppCompatActivity() {
                 importConfig(own, quiet = true, own = true)
                 showSignedIn()
                 loadConfigs()
-                startTrafficRefresh()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PanelApiException) {
@@ -200,7 +175,9 @@ class PanelActivity : AppCompatActivity() {
 
     private fun signOut() {
         val session = sessionStore.session
-        refreshJob?.cancel()
+        accountExitsJob?.cancel()
+        exitsGeneration++
+        binding.accountExitsList.removeAllViews()
         requestGeneration++
         loadingConfigs = false
         uncertainListLoaded = false
@@ -237,17 +214,26 @@ class PanelActivity : AppCompatActivity() {
     private fun loadConfigs() {
         val session = sessionStore.session ?: return
         val generation = ++requestGeneration
+        val exitsRequest = ++exitsGeneration
         loadingConfigs = true
+        accountExitsJob?.cancel()
+        binding.accountExitsList.removeAllViews()
+        binding.accountExitsMessage.visibility = View.VISIBLE
+        binding.accountExitsMessage.setText(R.string.panel_exits_loading)
         busy(true)
         lifecycleScope.launch {
             try {
                 val loaded = api.fetchConfigs(session.server, session.token)
                 if (sessionStore.session != session || generation != requestGeneration) return@launch
                 showConfigs(loaded)
+                loadAccountExits(session, loaded.firstOrNull()?.id, exitsRequest)
             } catch (e: PanelApiException) {
                 if (sessionStore.session != session || generation != requestGeneration) return@launch
+                binding.accountExitsMessage.setText(R.string.panel_exits_load_error)
                 toast(e.message ?: getString(R.string.panel_error_connect))
                 if (e.status == 401 && sessionStore.session == session) {
+                    accountExitsJob?.cancel()
+                    binding.accountExitsList.removeAllViews()
                     sessionStore.clear()
                     configs.clear()
                     adapter.notifyDataSetChanged()
@@ -257,6 +243,7 @@ class PanelActivity : AppCompatActivity() {
                 throw e
             } catch (e: Exception) {
                 if (sessionStore.session != session || generation != requestGeneration) return@launch
+                binding.accountExitsMessage.setText(R.string.panel_exits_load_error)
                 toast(getString(R.string.panel_error_connect))
             } finally {
                 if (generation == requestGeneration) {
@@ -264,6 +251,64 @@ class PanelActivity : AppCompatActivity() {
                     busy(false)
                 }
             }
+        }
+    }
+
+    /**
+     * The API requires a configuration ID. Grants and status belong to the account/server;
+     * we use an existing ID only to read them, not to select or import a configuration.
+     */
+    private fun loadAccountExits(session: PanelSession, configId: Int?, generation: Int) {
+        accountExitsJob?.cancel()
+        binding.accountExitsList.removeAllViews()
+        binding.accountExitsMessage.visibility = View.VISIBLE
+        if (configId == null) {
+            binding.accountExitsMessage.setText(R.string.panel_exits_need_config)
+            return
+        }
+        binding.accountExitsMessage.setText(R.string.panel_exits_loading)
+        accountExitsJob = lifecycleScope.launch {
+            try {
+                val exits = api.fetchExits(session.server, session.token, configId)
+                if (sessionStore.session != session || generation != exitsGeneration) return@launch
+                renderAccountExits(exits)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (sessionStore.session == session && generation == exitsGeneration) {
+                    binding.accountExitsMessage.setText(R.string.panel_exits_load_error)
+                }
+            }
+        }
+    }
+
+    private fun renderAccountExits(exits: List<PanelExit>) {
+        binding.accountExitsList.removeAllViews()
+        binding.accountExitsMessage.visibility = if (exits.isEmpty()) View.VISIBLE else View.GONE
+        if (exits.isEmpty()) binding.accountExitsMessage.setText(R.string.panel_exits_auto)
+        exits.forEach { exit ->
+            val item = ItemAccountExitBinding.inflate(layoutInflater, binding.accountExitsList, false)
+            item.exitName.text = exit.name
+            item.exitCountry.text = exit.country
+            item.exitCountry.visibility = if (exit.country.isBlank()) View.GONE else View.VISIBLE
+            item.exitActive.visibility = if (exit.active == true) View.VISIBLE else View.GONE
+            val latency = exit.rttMs?.takeIf { it.isFinite() && it >= 0 }
+            item.exitLatency.text = latency?.let { getString(R.string.panel_exit_latency, it.toInt()) } ?: "—"
+            item.exitLatency.contentDescription = if (latency == null) {
+                getString(R.string.panel_exit_latency_unknown)
+            } else {
+                getString(R.string.panel_exit_latency_description, item.exitLatency.text)
+            }
+            val (color, description) = when {
+                exit.alive == null -> R.color.exit_status_unknown to R.string.panel_exit_unknown
+                exit.degraded == true -> R.color.exit_status_degraded to R.string.panel_exit_degraded
+                exit.alive -> R.color.exit_status_healthy to R.string.panel_exit_healthy
+                else -> R.color.exit_status_down to R.string.panel_exit_down
+            }
+            item.exitStatus.setBackgroundColor(getColor(color))
+            item.exitStatus.contentDescription = getString(description)
+            item.exitStatus.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            binding.accountExitsList.addView(item.root)
         }
     }
 
@@ -621,14 +666,33 @@ class PanelActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val config = configs[position]
-            holder.item.configName.text = config.name
             val session = sessionStore.session
             val thisDevice = session != null && (
                 (config.deviceId.isNotBlank() && config.deviceId.equals(device.deviceId, ignoreCase = true)) ||
                     (config.deviceId.isBlank() && links.ownConfigId(session) == config.id &&
                         links.tunnelName(session, config.id) != null)
                 )
-            holder.item.configThisDevice.visibility = if (thisDevice) View.VISIBLE else View.GONE
+            val title =
+                if (thisDevice) {
+                    val label = getString(R.string.panel_this_device)
+                    SpannableString("${config.name}  $label").apply {
+                        setSpan(
+                            RelativeSizeSpan(0.7f),
+                            config.name.length,
+                            length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                        setSpan(
+                            ForegroundColorSpan(getColor(R.color.panel_label_positive)),
+                            config.name.length,
+                            length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                    }
+                } else {
+                    config.name
+                }
+            holder.item.configName.text = title
             holder.item.configIp.text =
                 if (config.remoteIp.isBlank()) config.ip else "${config.ip} • ${config.remoteIp}"
             holder.item.configTraffic.text =
@@ -638,6 +702,10 @@ class PanelActivity : AppCompatActivity() {
                     formatBytes(config.rx),
                 )
             holder.item.configHandshake.text = formatHandshake(config.handshake)
+            // A disabled configuration still has its keys and history, but it cannot carry traffic.
+            holder.item.root.alpha = if (config.enabled) 1f else 0.45f
+            holder.item.root.contentDescription =
+                if (config.enabled) title else getString(R.string.panel_config_disabled, title)
             holder.item.configMore.setOnClickListener { showActions(config) }
             holder.item.root.setOnClickListener {
                 startActivity(
@@ -677,7 +745,6 @@ class PanelActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val TRAFFIC_REFRESH_MS = 5_000L
         const val TUNNEL_NAME_MAX = 15
     }
 }

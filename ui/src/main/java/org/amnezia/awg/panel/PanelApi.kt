@@ -44,11 +44,15 @@ data class PanelExit(
     val id: Int,
     val name: String,
     val comment: String,
+    /** Where the exit is hosted; an empty string when the administrator left it blank. */
+    val country: String,
     val alive: Boolean?,
     val degraded: Boolean?,
     val rttMs: Double?,
     /** Default server route, not necessarily the route used by this configuration. */
     val active: Boolean?,
+    /** True when this configuration is forced onto this exit. */
+    val pinned: Boolean?,
 )
 
 /** A routed subnet the account is granted, with its state for one configuration. */
@@ -169,14 +173,32 @@ class PanelApi(private val context: Context) {
                     id = exit.getInt("id"),
                     name = exit.getString("name"),
                     comment = exit.optString("comment"),
+                    country = exit.optString("country"),
                     alive = if (exit.isNull("alive")) null else exit.optBoolean("alive"),
                     degraded = if (exit.isNull("degraded")) null else exit.optBoolean("degraded"),
                     rttMs = if (exit.isNull("rtt_ms")) null else exit.optDouble("rtt_ms"),
                     active = if (exit.isNull("active") || !exit.optBoolean("status_fresh", true)) null
                         else exit.optBoolean("active"),
+                    pinned = if (exit.isNull("pinned")) null else exit.optBoolean("pinned"),
                 )
             }
         }
+
+    /** Pins the configuration to one granted exit, or passes null to go back to automatic. */
+    suspend fun setExitPin(server: String, token: String, configId: Int, exitId: Int?) {
+        withContext(Dispatchers.IO) {
+            val form = buildList {
+                add("config_id" to configId.toString())
+                if (exitId == null) {
+                    add("action" to "auto")
+                } else {
+                    add("action" to "pin")
+                    add("exit_id" to exitId.toString())
+                }
+            }
+            execute(server, "/api/me/exits/pin", "POST", token, form)
+        }
+    }
 
     /** Replaces the configuration's exit order; the panel rejects partial lists. */
     suspend fun setExitOrder(server: String, token: String, configId: Int, exitIds: List<Int>) {

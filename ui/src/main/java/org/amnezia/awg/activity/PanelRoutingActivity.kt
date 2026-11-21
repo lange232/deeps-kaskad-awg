@@ -6,12 +6,18 @@
 package org.amnezia.awg.activity
 
 import android.graphics.Color
+import android.annotation.SuppressLint
+import android.content.ClipData
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.view.DragEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -47,6 +53,7 @@ class PanelRoutingActivity : AppCompatActivity() {
     private var working = false
     private var pendingLocalRefresh = false
     private var routeResultUncertain = false
+    private var pinning = false
     private var confirmedEnabled: Boolean? = null
     private var toggling = false
     private var hours = 0
@@ -93,7 +100,7 @@ class PanelRoutingActivity : AppCompatActivity() {
                 else -> 24
             })
         }
-        binding.rangeGroup.check(R.id.range_24)
+        binding.rangeGroup.check(R.id.range_3)
 
         load()
         loadSnapshot()
@@ -343,13 +350,20 @@ class PanelRoutingActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
+    private data class DraggedExit(val id: Int)
+
+    @SuppressLint("ClickableViewAccessibility")
     private fun renderExits() {
         binding.exitsList.removeAllViews()
         exits.forEachIndexed { position, exit ->
             val item = ItemPanelExitBinding.inflate(LayoutInflater.from(this), binding.exitsList, false)
-            item.exitName.text = exit.comment.ifBlank { exit.name }
-            item.exitComment.text = exit.name
+            item.exitName.text = exit.name
+            item.exitComment.text = exit.country
+            item.exitComment.visibility = if (exit.country.isBlank()) View.GONE else View.VISIBLE
             item.exitActive.visibility = if (exit.active == true) View.VISIBLE else View.GONE
+            item.exitPinned.visibility = if (exit.pinned == true) View.VISIBLE else View.GONE
+            val canPin = !working && !pendingLocalRefresh && !routeResultUncertain
+            item.root.setOnClickListener { if (canPin) showExitPinActions(exit) }
             item.exitRtt.text = exit.rttMs?.let { "${it.toInt()} ms" } ?: ""
             val (statusColor, statusText) = when {
                 exit.alive == null -> R.color.exit_status_unknown to R.string.panel_exit_unknown
@@ -360,16 +374,107 @@ class PanelRoutingActivity : AppCompatActivity() {
             item.exitStatus.setBackgroundColor(getColor(statusColor))
             item.exitStatus.contentDescription = getString(statusText)
             item.exitStatus.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            item.exitUp.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position > 0
-            item.exitDown.isEnabled = !working && !pendingLocalRefresh && !routeResultUncertain && position < exits.size - 1
-            item.exitUp.setOnClickListener { moveExit(position, -1) }
-            item.exitDown.setOnClickListener { moveExit(position, 1) }
+            val canReorder = !working && !pendingLocalRefresh && !routeResultUncertain && exits.size > 1
+            item.exitDrag.isEnabled = canReorder
+            item.exitDrag.alpha = if (canReorder) 1f else 0.4f
+            item.exitDrag.setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN && canReorder) {
+                    item.root.startDragAndDrop(
+                        ClipData.newPlainText("", ""),
+                        View.DragShadowBuilder(item.root),
+                        DraggedExit(exit.id),
+                        0,
+                    )
+                } else event.actionMasked != MotionEvent.ACTION_DOWN && canReorder
+            }
+            item.root.setOnDragListener { view, event ->
+                val drag = event.localState as? DraggedExit
+                if (drag == null || !canReorder) return@setOnDragListener false
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED -> true
+                    DragEvent.ACTION_DRAG_ENTERED -> {
+                        view.alpha = 0.65f
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> {
+                        view.alpha = 1f
+                        true
+                    }
+                    DragEvent.ACTION_DROP -> {
+                        view.alpha = 1f
+                        view.post {
+                            if (!working && !pendingLocalRefresh && !routeResultUncertain) {
+                                val from = exits.indexOfFirst { it.id == drag.id }
+                                val to = exits.indexOfFirst { it.id == exit.id }
+                                if (from >= 0 && to >= 0) moveExit(from, to - from)
+                            }
+                        }
+                        true
+                    }
+                    else -> true
+                }
+            }
+            if (canReorder && position > 0) {
+                ViewCompat.addAccessibilityAction(item.root, getString(R.string.panel_move_up)) { _, _ ->
+                    val index = exits.indexOfFirst { it.id == exit.id }
+                    if (!working && !pendingLocalRefresh && !routeResultUncertain && index > 0) {
+                        moveExit(index, -1)
+                        true
+                    } else false
+                }
+            }
+            if (canReorder && position < exits.lastIndex) {
+                ViewCompat.addAccessibilityAction(item.root, getString(R.string.panel_move_down)) { _, _ ->
+                    val index = exits.indexOfFirst { it.id == exit.id }
+                    if (!working && !pendingLocalRefresh && !routeResultUncertain && index in 0 until exits.lastIndex) {
+                        moveExit(index, 1)
+                        true
+                    } else false
+                }
+            }
             binding.exitsList.addView(item.root)
         }
     }
 
-    private fun moveExit(position: Int, delta: Int) {
-        val target = position + delta
+    private fun showExitPinActions(exit: PanelExit) {
+        if (pinning || !loaded) return
+        val session = sessionStore.session ?: return finish()
+        val pinned = exit.pinned == true
+        val action = getString(if (pinned) R.string.panel_exit_unpin else R.string.panel_exit_pin)
+        AlertDialog.Builder(this)
+            .setTitle(exit.name)
+            .setItems(arrayOf(action)) { _, _ ->
+                if (sessionStore.session == session) {
+                    setExitPin(session, if (pinned) null else exit.id)
+                }
+            }
+            .show()
+    }
+
+    /** The panel keeps the pin per configuration, so it is saved on its own without the route order. */
+    private fun setExitPin(session: PanelSession, exitId: Int?) {
+        pinning = true
+        lifecycleScope.launch {
+            try {
+                api.setExitPin(session.server, session.token, configId, exitId)
+                if (sessionStore.session != session) return@launch finish()
+                for (index in exits.indices) {
+                    exits[index] = exits[index].copy(pinned = exits[index].id == exitId)
+                }
+                renderExits()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (sessionStore.session == session) {
+                    toast((e as? PanelApiException)?.message ?: getString(R.string.panel_error_connect))
+                }
+            } finally {
+                pinning = false
+            }
+        }
+    }
+
+    private fun moveExit(position: Int, delta: Int) {        val target = position + delta
         if (target !in exits.indices) return
         val moved = exits.removeAt(position)
         exits.add(target, moved)
