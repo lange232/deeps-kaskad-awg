@@ -47,6 +47,7 @@ data class UpdateRequest(val server: String, val update: PanelUpdate)
 
 object Updates {
     private const val DAY_MS = 24L * 60 * 60 * 1000
+    private const val RETRY_MS = 15L * 60 * 1000
     private const val MAX_SIZE = 200L * 1024 * 1024
     private const val FAMILY = "org.amnezia.awg.update_family"
     private const val FAMILY_VALUE = "deeps-kaskad-awg-v1"
@@ -120,22 +121,36 @@ object Updates {
         if (decode(p.getString(key, null)) == request.update) p.edit().remove(key).apply()
     }
 
+    private fun revoke(context: Context, server: String) {
+        prefs(context).edit().remove("$server:update").remove("$server:ready").apply()
+    }
+
     suspend fun find(context: Context, api: PanelApi, server: String, force: Boolean): UpdateCheck {
         val p = prefs(context)
         val last = p.getLong("$server:last", 0)
-        if (!force && System.currentTimeMillis() - last in 0 until DAY_MS) {
+        val now = System.currentTimeMillis()
+        if (!force && now - last in 0 until DAY_MS) {
             val update = decode(p.getString("$server:update", null))
             return if (update != null && compatible(context, server, update) &&
                 update.versionCode > BuildConfig.VERSION_CODE
             ) UpdateCheck.Available(update) else UpdateCheck.Deferred
         }
-        p.edit().putLong("$server:last", System.currentTimeMillis()).apply()
+        // A transient failure is retried sooner than a successful check, without retrying on
+        // every Activity resume (or hammering an unavailable panel).
+        if (!force && now - p.getLong("$server:attempt", 0) in 0 until RETRY_MS)
+            return UpdateCheck.Deferred
+        p.edit().putLong("$server:attempt", now).apply()
         val update = try {
             api.fetchUpdate(server)
         } catch (e: CancellationException) {
             throw e
         } catch (e: PanelApiException) {
-            return if (e.status == 404 || e.status == 503) UpdateCheck.Unavailable else UpdateCheck.Error
+            if (e.status == 404) {
+                revoke(context, server)
+                p.edit().putLong("$server:last", System.currentTimeMillis()).apply()
+                return UpdateCheck.Unavailable
+            }
+            return UpdateCheck.Error
         } catch (e: Exception) {
             return UpdateCheck.Error
         }
@@ -143,7 +158,8 @@ object Updates {
             p.edit().remove("$server:update").apply()
             return UpdateCheck.Invalid
         }
-        val editor = p.edit()
+        val editor = p.edit().putLong("$server:last", System.currentTimeMillis())
+        if (decode(p.getString("$server:ready", null)) != update) editor.remove("$server:ready")
         if (update.versionCode <= BuildConfig.VERSION_CODE) {
             editor.remove("$server:update").apply()
             return UpdateCheck.Current
@@ -245,6 +261,8 @@ object Updates {
 
     suspend fun verifiedFile(context: Context, request: UpdateRequest): File? = withContext(Dispatchers.IO) {
         val (server, update) = request
+        // A notification created before a 404 or a replacement must not bypass revocation.
+        if (ready(context, server) != request) return@withContext null
         if (!compatible(context, server, update) || update.versionCode <= BuildConfig.VERSION_CODE)
             return@withContext null
         val file = target(context, update)

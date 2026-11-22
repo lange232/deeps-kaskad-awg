@@ -82,6 +82,7 @@ class PanelActivity : AppCompatActivity() {
     private var updateJob: Job? = null
     private var installJob: Job? = null
     private var pendingInstall: UpdateRequest? = null
+    private var awaitingInstallPermission = false
     private var updatePanel: String? = null
     private var updateOffer: UpdateRequest? = null
     private var exitsGeneration = 0
@@ -108,6 +109,7 @@ class PanelActivity : AppCompatActivity() {
         pendingInstall = savedInstanceState?.let {
             BundleCompat.getParcelable(it, PENDING_INSTALL, Intent::class.java)
         }?.let { UpdateDownloadService.requestFromIntent(it, packageName) }
+        awaitingInstallPermission = savedInstanceState?.getBoolean(PENDING_INSTALL_PERMISSION) ?: false
 
         binding.signInButton.setOnClickListener { signIn() }
         binding.toolbar.setOnMenuItemClickListener { item ->
@@ -148,6 +150,7 @@ class PanelActivity : AppCompatActivity() {
             UpdateDownloadService.putRequest(saved, it)
             outState.putParcelable(PENDING_INSTALL, saved)
         }
+        outState.putBoolean(PENDING_INSTALL_PERMISSION, awaitingInstallPermission)
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -162,7 +165,7 @@ class PanelActivity : AppCompatActivity() {
         }
         checkForUpdates(force = false)
         pendingInstall?.let { request ->
-            if (Updates.canInstall(this)) installDownloaded(request)
+            if (!awaitingInstallPermission || Updates.canInstall(this)) installDownloaded(request)
         }
     }
 
@@ -415,6 +418,7 @@ class PanelActivity : AppCompatActivity() {
         if (updatePanel != null) {
             installJob?.cancel()
             pendingInstall = null
+            awaitingInstallPermission = false
         }
         updatePanel = server
         updateJob?.cancel()
@@ -442,7 +446,17 @@ class PanelActivity : AppCompatActivity() {
                     updateOffer = null
                     if (force) toast(getString(R.string.panel_update_none))
                 }
-                UpdateCheck.Unavailable -> if (force) toast(getString(R.string.panel_update_unavailable))
+                UpdateCheck.Unavailable -> {
+                    updateOffer = null
+                    if (pendingInstall?.server == server) {
+                        installJob?.cancel()
+                        pendingInstall = null
+                        awaitingInstallPermission = false
+                    }
+                    val running = UpdateDownloadService.state.value as? UpdateDownloadService.State.Running
+                    if (running?.request?.server == server) UpdateDownloadService.cancel(running.request)
+                    if (force) toast(getString(R.string.panel_update_unavailable))
+                }
                 UpdateCheck.Invalid -> {
                     updateOffer = null
                     if (force) toast(getString(R.string.panel_update_incompatible))
@@ -529,6 +543,9 @@ class PanelActivity : AppCompatActivity() {
 
     private fun installDownloaded(request: UpdateRequest) {
         if (request.server != currentUpdatePanel() || installJob?.isActive == true) return
+        // Keep the explicit install action while verification is running. If the screen stops,
+        // onResume will retry from the already-downloaded file rather than silently dropping it.
+        pendingInstall = request
         installJob = lifecycleScope.launch {
             try {
                 val file = try {
@@ -540,18 +557,23 @@ class PanelActivity : AppCompatActivity() {
                 }
                 if (request.server != currentUpdatePanel() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
                     return@launch
-                pendingInstall = null
                 if (file == null) {
+                    pendingInstall = null
+                    awaitingInstallPermission = false
                     Updates.forgetReady(this@PanelActivity, request)
                     toast(getString(R.string.panel_update_signature))
                 } else if (!Updates.canInstall(this@PanelActivity)) {
-                    pendingInstall = request
+                    awaitingInstallPermission = true
                     if (!Updates.openInstallSettings(this@PanelActivity)) {
                         pendingInstall = null
+                        awaitingInstallPermission = false
                         toast(getString(R.string.panel_update_installer_unavailable))
                     } else toast(getString(R.string.panel_update_allow_install))
-                } else if (!Updates.install(this@PanelActivity, file)) {
-                    toast(getString(R.string.panel_update_installer_unavailable))
+                } else {
+                    pendingInstall = null
+                    awaitingInstallPermission = false
+                    if (!Updates.install(this@PanelActivity, file))
+                        toast(getString(R.string.panel_update_installer_unavailable))
                 }
             } finally {
                 installJob = null
@@ -972,6 +994,7 @@ class PanelActivity : AppCompatActivity() {
 
     companion object {
         private const val PENDING_INSTALL = "pending_install_update"
+        private const val PENDING_INSTALL_PERMISSION = "pending_install_permission"
         private const val TUNNEL_NAME_MAX = 15
     }
 }
