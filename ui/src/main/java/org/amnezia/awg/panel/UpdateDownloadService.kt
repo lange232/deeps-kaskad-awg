@@ -57,6 +57,11 @@ class UpdateDownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
+        if (intent?.action == ACTION_CANCEL) {
+            requestFromIntent(intent, packageName)?.let { cancel(it) }
+            if (job == null) stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
         if (job != null) return START_NOT_STICKY
         val request = intent?.let { requestFromIntent(it, packageName) }
         if (request == null) {
@@ -64,7 +69,7 @@ class UpdateDownloadService : Service() {
             return START_NOT_STICKY
         }
         try {
-            startForeground(NOTIFICATION_ID, progressNotification(0))
+            startForeground(NOTIFICATION_ID, progressNotification(0, request))
         } catch (_: RuntimeException) {
             mutableState.value = State.Failed(request, getString(R.string.panel_update_download_failed))
             stopSelfResult(startId)
@@ -78,7 +83,7 @@ class UpdateDownloadService : Service() {
                 Updates.download(this@UpdateDownloadService, request) { percent ->
                     withContext(Dispatchers.Main.immediate) {
                         mutableState.value = State.Running(request, percent)
-                        notify(progressNotification(percent))
+                        notify(progressNotification(percent, request))
                     }
                 }
                 ensureActive()
@@ -108,15 +113,41 @@ class UpdateDownloadService : Service() {
         super.onDestroy()
     }
 
-    private fun progressNotification(percent: Int): Notification =
+    private fun progressNotification(percent: Int, request: UpdateRequest): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(getString(R.string.panel_update_downloading, percent))
             .setProgress(100, percent, false)
+            .setContentIntent(openAppIntent())
+            .addAction(0, getString(R.string.panel_update_cancel), cancelIntent(request))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+
+    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
+        this,
+        0,
+        Intent(this, PanelActivity::class.java)
+            .addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            ),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /** The action runs in this service, so it also works while the screen is gone. */
+    private fun cancelIntent(request: UpdateRequest): PendingIntent {
+        val intent = Intent(this, UpdateDownloadService::class.java).setAction(ACTION_CANCEL)
+        putRequest(intent, request)
+        return PendingIntent.getService(
+            this,
+            2,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
     private fun readyNotification(request: UpdateRequest): Notification {
         val intent = Intent(this, PanelActivity::class.java)
@@ -173,6 +204,7 @@ class UpdateDownloadService : Service() {
 
     companion object {
         const val ACTION_INSTALL = "org.amnezia.awg.INSTALL_UPDATE"
+        private const val ACTION_CANCEL = "org.amnezia.awg.CANCEL_UPDATE"
         private const val EXTRA_SERVER = "server"
         private const val EXTRA_VERSION_CODE = "version_code"
         private const val EXTRA_VERSION_NAME = "version_name"

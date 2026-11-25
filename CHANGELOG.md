@@ -5,7 +5,7 @@ upstream AmneziaWG changelog. `Unreleased` describes work on `develop`; a
 versioned section describes a build published for users. Test APKs are not
 automatically new releases.
 
-## Unreleased (`develop`)
+## 0.4.12
 
 - Retry failed automatic update checks after 15 minutes instead of waiting a
   full day. Successful checks remain limited to once per day; manual checks
@@ -15,6 +15,13 @@ automatically new releases.
   do not revoke a downloaded APK.
 - Resume a user-requested installation after returning to the app if its
   verification finished while the screen was in the background.
+- The download notification now opens the app on tap and offers a cancel action.
+- A withdrawn update is reported as withdrawn instead of as a signature problem,
+  and old downloads and interrupted transfers are cleaned up automatically.
+- Show every configuration: the list is no longer clipped by the surrounding
+  scroll container, so the rows always match the "configurations" counter.
+- `versionCode` is derived only by the build; the client compares the panel's
+  claim with the downloaded APK instead of recomputing the number.
 
 ## 0.4.11
 
@@ -50,6 +57,6 @@ Source: [`a39a437f`](https://github.com/lange232/deeps-kaskad-awg/commit/a39a437
   ([`da0a65f9`](https://github.com/lange232/deeps-kaskad-awg/commit/da0a65f9),
   [`7976f796`](https://github.com/lange232/deeps-kaskad-awg/commit/7976f796)).
 
-Some earlier libra test APKs used `0.4.12.x` and a higher `versionCode` than
-0.4.11. Android will not install 0.4.11 over one of those APKs as an update.
-Their individual test builds are not reconstructed here as source releases.
+Every build up to 0.4.13, including the 0.4.12.x libra builds, was for testing
+only and was never distributed to users. Individual test builds are not
+recorded here as source releases; 0.4.13 is the first user-facing version.
