@@ -47,6 +47,8 @@ data class UpdateRequest(val server: String, val update: PanelUpdate)
 
 object Updates {
     private const val DAY_MS = 24L * 60 * 60 * 1000
+    private const val RETRY_MS = 15L * 60 * 1000
+    private const val STALE_MS = 7L * DAY_MS
     private const val MAX_SIZE = 200L * 1024 * 1024
     private const val FAMILY = "org.amnezia.awg.update_family"
     private const val FAMILY_VALUE = "deeps-kaskad-awg-v1"
@@ -68,18 +70,12 @@ object Updates {
         }
     }
 
-    fun versionCode(name: String): Int? {
-        val parts = name.split('.')
-        if (parts.size !in 3..4 || parts.any { !it.matches(Regex("0|[1-9][0-9]*")) }) return null
-        val n = parts.map { it.toLongOrNull() ?: return null }
-        if (n.drop(1).any { it > 99 } || n[0] > 2100) return null
-        val code = ((n[0] * 10000 + n[1] * 100 + n[2]) * 100) + n.getOrElse(3) { 0 }
-        return code.takeIf { it in 1..2_100_000_000L }?.toInt()
-    }
+    /** Version names look like `0.4.13` or `0.4.13.1`; the code is derived by Gradle only. */
+    private val VERSION_NAME = Regex("[0-9]{1,4}(\\.[0-9]{1,2}){2,3}")
 
     private fun valid(update: PanelUpdate, context: Context): Boolean =
         update.packageName == context.packageName &&
-            versionCode(update.versionName) == update.versionCode &&
+            update.versionName.matches(VERSION_NAME) && update.versionCode > 0 &&
             update.sha256.matches(Regex("[0-9a-fA-F]{64}")) &&
             update.size in 1..MAX_SIZE && update.url.isNotBlank()
 
@@ -120,22 +116,41 @@ object Updates {
         if (decode(p.getString(key, null)) == request.update) p.edit().remove(key).apply()
     }
 
+    private fun revoke(context: Context, server: String) {
+        prefs(context).edit().remove("$server:update").remove("$server:ready").apply()
+    }
+
     suspend fun find(context: Context, api: PanelApi, server: String, force: Boolean): UpdateCheck {
         val p = prefs(context)
         val last = p.getLong("$server:last", 0)
-        if (!force && System.currentTimeMillis() - last in 0 until DAY_MS) {
+        val now = System.currentTimeMillis()
+        if (!force && now - last in 0 until DAY_MS) {
             val update = decode(p.getString("$server:update", null))
             return if (update != null && compatible(context, server, update) &&
                 update.versionCode > BuildConfig.VERSION_CODE
             ) UpdateCheck.Available(update) else UpdateCheck.Deferred
         }
-        p.edit().putLong("$server:last", System.currentTimeMillis()).apply()
+        // A transient failure is retried sooner than a successful check, without retrying on
+        // every Activity resume (or hammering an unavailable panel). A known offer is still shown
+        // while the retry waits: throttling the network must not hide verified data.
+        if (!force && now - p.getLong("$server:attempt", 0) in 0 until RETRY_MS) {
+            val cached = decode(p.getString("$server:update", null))
+            return if (cached != null && compatible(context, server, cached) &&
+                cached.versionCode > BuildConfig.VERSION_CODE
+            ) UpdateCheck.Available(cached) else UpdateCheck.Deferred
+        }
+        p.edit().putLong("$server:attempt", now).apply()
         val update = try {
             api.fetchUpdate(server)
         } catch (e: CancellationException) {
             throw e
         } catch (e: PanelApiException) {
-            return if (e.status == 404 || e.status == 503) UpdateCheck.Unavailable else UpdateCheck.Error
+            if (e.status == 404) {
+                revoke(context, server)
+                p.edit().putLong("$server:last", System.currentTimeMillis()).apply()
+                return UpdateCheck.Unavailable
+            }
+            return UpdateCheck.Error
         } catch (e: Exception) {
             return UpdateCheck.Error
         }
@@ -143,7 +158,10 @@ object Updates {
             p.edit().remove("$server:update").apply()
             return UpdateCheck.Invalid
         }
-        val editor = p.edit()
+        val editor = p.edit().putLong("$server:last", System.currentTimeMillis())
+        val ready = decode(p.getString("$server:ready", null))
+        if (ready != update) editor.remove("$server:ready")
+        cleanup(context, ready)
         if (update.versionCode <= BuildConfig.VERSION_CODE) {
             editor.remove("$server:update").apply()
             return UpdateCheck.Current
@@ -154,6 +172,29 @@ object Updates {
 
     private fun target(context: Context, update: PanelUpdate): File =
         File(File(context.cacheDir, "updates"), "${update.versionCode}-${update.sha256.lowercase()}.apk")
+
+    /**
+     * Drops downloads that are no longer needed: interrupted transfers and versions older than
+     * [minAgeMs]. [keep] and files newer than [minAgeMs] survive, so an in-flight transfer and a
+     * download from another panel are never deleted.
+     */
+    suspend fun cleanup(
+        context: Context,
+        keep: PanelUpdate? = null,
+        minAgeMs: Long = STALE_MS,
+    ) = withContext(Dispatchers.IO) {
+        val keepName = keep?.let { target(context, it).name }
+        val cutoff = System.currentTimeMillis() - minAgeMs
+        File(context.cacheDir, "updates").listFiles()?.forEach { entry ->
+            if (entry.isDirectory) {
+                entry.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
+            } else if (entry.name != keepName && entry.name.endsWith(".apk") &&
+                entry.lastModified() < cutoff
+            ) {
+                entry.delete()
+            }
+        }
+    }
 
     suspend fun download(context: Context, request: UpdateRequest, onProgress: suspend (Int) -> Unit): Unit =
         withContext(Dispatchers.IO) {
@@ -167,7 +208,11 @@ object Updates {
                 onProgress(100)
                 return@withContext
             }
-            val staging = File(target.parentFile, "partial").apply { mkdirs() }
+            val staging = File(target.parentFile, "partial")
+            // A download is serialized by the service, so anything left here belongs to a killed
+            // process and can be discarded before writing.
+            staging.deleteRecursively()
+            staging.mkdirs()
             val partial = File(staging, target.name)
             val call = downloadClient(context).newCall(
                 Request.Builder().url(url).header("Accept", "application/vnd.android.package-archive").build(),
@@ -245,6 +290,8 @@ object Updates {
 
     suspend fun verifiedFile(context: Context, request: UpdateRequest): File? = withContext(Dispatchers.IO) {
         val (server, update) = request
+        // A notification created before a 404 or a replacement must not bypass revocation.
+        if (ready(context, server) != request) return@withContext null
         if (!compatible(context, server, update) || update.versionCode <= BuildConfig.VERSION_CODE)
             return@withContext null
         val file = target(context, update)

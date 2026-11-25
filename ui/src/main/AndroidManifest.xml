@@ -145,7 +145,8 @@
             android:grantUriPermissions="true" />
 
         <provider
-            android:name="androidx.core.content.FileProvider"            android:authorities="${applicationId}.updates"
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

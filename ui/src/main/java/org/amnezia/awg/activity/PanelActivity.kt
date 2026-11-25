@@ -15,9 +15,7 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -28,14 +26,13 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import java.util.Locale
 import java.util.Date
 import java.text.DateFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -82,14 +79,16 @@ class PanelActivity : AppCompatActivity() {
     private var updateJob: Job? = null
     private var installJob: Job? = null
     private var pendingInstall: UpdateRequest? = null
+    private var awaitingInstallPermission = false
     private var updatePanel: String? = null
     private var updateOffer: UpdateRequest? = null
+    private var readyOffer: UpdateRequest? = null
+    private var panelSyncJob: Job? = null
     private var exitsGeneration = 0
     private var creatingDevice = false
     private var loadingConfigs = false
     private var uncertainListLoaded = false
     private val configs = mutableListOf<PanelConfig>()
-    private val adapter = ConfigAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,12 +101,10 @@ class PanelActivity : AppCompatActivity() {
         device = PanelDevice(applicationContext)
         links = PanelConfigLinks(applicationContext)
 
-        binding.configList.layoutManager = LinearLayoutManager(this)
-        binding.configList.adapter = adapter
-
         pendingInstall = savedInstanceState?.let {
             BundleCompat.getParcelable(it, PENDING_INSTALL, Intent::class.java)
         }?.let { UpdateDownloadService.requestFromIntent(it, packageName) }
+        awaitingInstallPermission = savedInstanceState?.getBoolean(PENDING_INSTALL_PERMISSION) ?: false
 
         binding.signInButton.setOnClickListener { signIn() }
         binding.toolbar.setOnMenuItemClickListener { item ->
@@ -135,7 +132,15 @@ class PanelActivity : AppCompatActivity() {
             binding.emailInput.setText(session.email)
             showSignedIn()
         }
-        binding.serverInput.doAfterTextChanged { syncUpdatePanel() }
+        // Typing an address changes the panel once per keystroke; wait for a short pause instead of
+        // re-reading the cached download and the prefs on every character.
+        binding.serverInput.doAfterTextChanged {
+            panelSyncJob?.cancel()
+            panelSyncJob = lifecycleScope.launch {
+                delay(PANEL_SYNC_DELAY_MS)
+                syncUpdatePanel()
+            }
+        }
         syncUpdatePanel()
         observeDownload()
         handleInstallIntent(intent)
@@ -148,6 +153,7 @@ class PanelActivity : AppCompatActivity() {
             UpdateDownloadService.putRequest(saved, it)
             outState.putParcelable(PENDING_INSTALL, saved)
         }
+        outState.putBoolean(PENDING_INSTALL_PERMISSION, awaitingInstallPermission)
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -160,9 +166,10 @@ class PanelActivity : AppCompatActivity() {
         if (sessionStore.session != null) {
             loadConfigs()
         }
+        refreshReady()
         checkForUpdates(force = false)
         pendingInstall?.let { request ->
-            if (Updates.canInstall(this)) installDownloaded(request)
+            if (!awaitingInstallPermission || Updates.canInstall(this)) installDownloaded(request)
         }
     }
 
@@ -201,7 +208,7 @@ class PanelActivity : AppCompatActivity() {
                 val result = api.login(server, email, password)
                 val session = PanelSession(server, result.email.ifBlank { email }, result.token, result.expiresAt)
                 configs.clear()
-                adapter.notifyDataSetChanged()
+                renderConfigs()
                 sessionStore.session = session
                 sessionStore.lastServer = server
                 sessionStore.lastEmail = email
@@ -246,7 +253,7 @@ class PanelActivity : AppCompatActivity() {
         sessionStore.clear()
         if (session != null) lifecycleScope.launch { api.logout(session.server, session.token) }
         configs.clear()
-        adapter.notifyDataSetChanged()
+        renderConfigs()
         // The address is typed by the user or comes from the local build setting, never carried over
         // from a previous session.
         binding.serverInput.setText(defaultServer())
@@ -304,7 +311,7 @@ class PanelActivity : AppCompatActivity() {
                     binding.accountExitsList.removeAllViews()
                     sessionStore.clear()
                     configs.clear()
-                    adapter.notifyDataSetChanged()
+                    renderConfigs()
                     showSignedOut()
                     syncUpdatePanel()
                 }
@@ -386,7 +393,7 @@ class PanelActivity : AppCompatActivity() {
         configs.clear()
         configs.addAll(loaded)
         if (creationUncertain(session)) uncertainListLoaded = true
-        adapter.notifyDataSetChanged()
+        renderConfigs()
         binding.accountText.text = "${session.server} · ${session.email}"
         binding.configCount.text = getString(R.string.panel_config_count, loaded.size)
         val expiresAt = session.expiresAt
@@ -415,11 +422,18 @@ class PanelActivity : AppCompatActivity() {
         if (updatePanel != null) {
             installJob?.cancel()
             pendingInstall = null
+            awaitingInstallPermission = false
         }
         updatePanel = server
         updateJob?.cancel()
         updateOffer = null
+        refreshReady()
         renderUpdateCard()
+    }
+
+    /** Reads the cached download once per relevant event instead of on every redraw. */
+    private fun refreshReady() {
+        readyOffer = currentUpdatePanel()?.let { Updates.ready(this, it) }
     }
 
     /** Checks at most once a day; the manual menu entry bypasses the interval. */
@@ -442,7 +456,17 @@ class PanelActivity : AppCompatActivity() {
                     updateOffer = null
                     if (force) toast(getString(R.string.panel_update_none))
                 }
-                UpdateCheck.Unavailable -> if (force) toast(getString(R.string.panel_update_unavailable))
+                UpdateCheck.Unavailable -> {
+                    updateOffer = null
+                    if (pendingInstall?.server == server) {
+                        installJob?.cancel()
+                        pendingInstall = null
+                        awaitingInstallPermission = false
+                    }
+                    val running = UpdateDownloadService.state.value as? UpdateDownloadService.State.Running
+                    if (running?.request?.server == server) UpdateDownloadService.cancel(running.request)
+                    if (force) toast(getString(R.string.panel_update_unavailable))
+                }
                 UpdateCheck.Invalid -> {
                     updateOffer = null
                     if (force) toast(getString(R.string.panel_update_incompatible))
@@ -461,6 +485,7 @@ class PanelActivity : AppCompatActivity() {
                 UpdateDownloadService.state.collect { state ->
                     if (state is UpdateDownloadService.State.Failed && state !== lastState &&
                         state.request.server == currentUpdatePanel()) toast(state.message)
+                    if (state !is UpdateDownloadService.State.Running) refreshReady()
                     lastState = state
                     renderUpdateCard(state)
                 }
@@ -486,7 +511,7 @@ class PanelActivity : AppCompatActivity() {
         }
 
         val offer = updateOffer?.takeIf { it.server == server }
-        val ready = server?.let { Updates.ready(this, it) }
+        val ready = readyOffer?.takeIf { it.server == server }
         binding.updateProgress.visibility = View.GONE
         binding.updateButton.setOnClickListener(null)
         if (ready != null && (offer == null || offer.update.versionCode < ready.update.versionCode ||
@@ -529,6 +554,9 @@ class PanelActivity : AppCompatActivity() {
 
     private fun installDownloaded(request: UpdateRequest) {
         if (request.server != currentUpdatePanel() || installJob?.isActive == true) return
+        // Keep the explicit install action while verification is running. If the screen stops,
+        // onResume will retry from the already-downloaded file rather than silently dropping it.
+        pendingInstall = request
         installJob = lifecycleScope.launch {
             try {
                 val file = try {
@@ -540,21 +568,33 @@ class PanelActivity : AppCompatActivity() {
                 }
                 if (request.server != currentUpdatePanel() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
                     return@launch
-                pendingInstall = null
                 if (file == null) {
+                    pendingInstall = null
+                    awaitingInstallPermission = false
                     Updates.forgetReady(this@PanelActivity, request)
-                    toast(getString(R.string.panel_update_signature))
+                    // The file can be gone because the panel withdrew it, not because it is bad.
+                    val withdrawn = Updates.ready(this@PanelActivity, request.server) != request
+                    toast(
+                        getString(
+                            if (withdrawn) R.string.panel_update_withdrawn else R.string.panel_update_signature,
+                        ),
+                    )
                 } else if (!Updates.canInstall(this@PanelActivity)) {
-                    pendingInstall = request
+                    awaitingInstallPermission = true
                     if (!Updates.openInstallSettings(this@PanelActivity)) {
                         pendingInstall = null
+                        awaitingInstallPermission = false
                         toast(getString(R.string.panel_update_installer_unavailable))
                     } else toast(getString(R.string.panel_update_allow_install))
-                } else if (!Updates.install(this@PanelActivity, file)) {
-                    toast(getString(R.string.panel_update_installer_unavailable))
+                } else {
+                    pendingInstall = null
+                    awaitingInstallPermission = false
+                    if (!Updates.install(this@PanelActivity, file))
+                        toast(getString(R.string.panel_update_installer_unavailable))
                 }
             } finally {
                 installJob = null
+                refreshReady()
                 renderUpdateCard()
             }
         }
@@ -883,66 +923,69 @@ class PanelActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    private inner class ConfigAdapter : RecyclerView.Adapter<ConfigAdapter.Holder>() {
-
-        inner class Holder(val item: ItemPanelConfigBinding) : RecyclerView.ViewHolder(item.root)
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
-            Holder(ItemPanelConfigBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            val config = configs[position]
-            val session = sessionStore.session
-            val thisDevice = session != null && (
-                (config.deviceId.isNotBlank() && config.deviceId.equals(device.deviceId, ignoreCase = true)) ||
-                    (config.deviceId.isBlank() && links.ownConfigId(session) == config.id &&
-                        links.tunnelName(session, config.id) != null)
-                )
-            val title =
-                if (thisDevice) {
-                    val label = getString(R.string.panel_this_device)
-                    SpannableString("${config.name}  $label").apply {
-                        setSpan(
-                            RelativeSizeSpan(0.7f),
-                            config.name.length,
-                            length,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        setSpan(
-                            ForegroundColorSpan(getColor(R.color.panel_label_positive)),
-                            config.name.length,
-                            length,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                    }
-                } else {
-                    config.name
-                }
-            holder.item.configName.text = title
-            holder.item.configIp.text =
-                if (config.remoteIp.isBlank()) config.ip else "${config.ip} • ${config.remoteIp}"
-            holder.item.configTraffic.text =
-                getString(
-                    R.string.panel_traffic,
-                    formatBytes(config.tx),
-                    formatBytes(config.rx),
-                )
-            holder.item.configHandshake.text = formatHandshake(config.handshake)
-            // A disabled configuration still has its keys and history, but it cannot carry traffic.
-            holder.item.root.alpha = if (config.enabled) 1f else 0.45f
-            holder.item.root.contentDescription =
-                if (config.enabled) title else getString(R.string.panel_config_disabled, title)
-            holder.item.configMore.setOnClickListener { showActions(config) }
-            holder.item.root.setOnClickListener {
-                startActivity(
-                    Intent(this@PanelActivity, PanelRoutingActivity::class.java)
-                        .putExtra(PanelRoutingActivity.EXTRA_CONFIG_ID, config.id)
-                        .putExtra(PanelRoutingActivity.EXTRA_CONFIG_NAME, config.name),
-                )
-            }
+    /**
+     * Draws the configurations into a plain container. A nested scrolling list inside the screen's
+     * ScrollView measures to the visible height, which hid the last rows while the header counted
+     * the real number.
+     */
+    private fun renderConfigs() {
+        binding.configList.removeAllViews()
+        configs.forEach { config ->
+            val item = ItemPanelConfigBinding.inflate(layoutInflater, binding.configList, false)
+            bindConfig(item, config)
+            binding.configList.addView(item.root)
         }
+    }
 
-        override fun getItemCount(): Int = configs.size
+    private fun bindConfig(item: ItemPanelConfigBinding, config: PanelConfig) {
+        val session = sessionStore.session
+        val thisDevice = session != null && (
+            (config.deviceId.isNotBlank() && config.deviceId.equals(device.deviceId, ignoreCase = true)) ||
+                (config.deviceId.isBlank() && links.ownConfigId(session) == config.id &&
+                    links.tunnelName(session, config.id) != null)
+            )
+        val title =
+            if (thisDevice) {
+                val label = getString(R.string.panel_this_device)
+                SpannableString("${config.name}  $label").apply {
+                    setSpan(
+                        RelativeSizeSpan(0.7f),
+                        config.name.length,
+                        length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                    setSpan(
+                        ForegroundColorSpan(getColor(R.color.panel_label_positive)),
+                        config.name.length,
+                        length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            } else {
+                config.name
+            }
+        item.configName.text = title
+        item.configIp.text =
+            if (config.remoteIp.isBlank()) config.ip else "${config.ip} • ${config.remoteIp}"
+        item.configTraffic.text =
+            getString(
+                R.string.panel_traffic,
+                formatBytes(config.tx),
+                formatBytes(config.rx),
+            )
+        item.configHandshake.text = formatHandshake(config.handshake)
+        // A disabled configuration still has its keys and history, but it cannot carry traffic.
+        item.root.alpha = if (config.enabled) 1f else 0.45f
+        item.root.contentDescription =
+            if (config.enabled) title else getString(R.string.panel_config_disabled, title)
+        item.configMore.setOnClickListener { showActions(config) }
+        item.root.setOnClickListener {
+            startActivity(
+                Intent(this, PanelRoutingActivity::class.java)
+                    .putExtra(PanelRoutingActivity.EXTRA_CONFIG_ID, config.id)
+                    .putExtra(PanelRoutingActivity.EXTRA_CONFIG_NAME, config.name),
+            )
+        }
     }
 
     private fun formatBytes(bytes: Long): String {
@@ -972,6 +1015,8 @@ class PanelActivity : AppCompatActivity() {
 
     companion object {
         private const val PENDING_INSTALL = "pending_install_update"
+        private const val PENDING_INSTALL_PERMISSION = "pending_install_permission"
+        private const val PANEL_SYNC_DELAY_MS = 300L
         private const val TUNNEL_NAME_MAX = 15
     }
 }

@@ -399,6 +399,7 @@
     <string name="panel_update_size_mismatch">The downloaded file has the wrong size</string>
     <string name="panel_update_hash_mismatch">The downloaded file failed the checksum check</string>
     <string name="panel_update_signature">The downloaded file is signed with another key</string>
+    <string name="panel_update_withdrawn">This update is no longer offered by the panel. Check for updates again.</string>
     <string name="panel_update_installer_unavailable">Could not open the system installer</string>
     <string name="panel_update_enter_server">Enter a panel address to check for updates</string>
     <string name="panel_update_different_panel">This update was downloaded from a different panel</string>

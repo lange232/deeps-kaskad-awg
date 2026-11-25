@@ -401,6 +401,7 @@
     <string name="panel_update_size_mismatch">Размер скачанного файла не совпал</string>
     <string name="panel_update_hash_mismatch">Скачанный файл не прошёл проверку контрольной суммы</string>
     <string name="panel_update_signature">Скачанный файл подписан другим ключом</string>
+    <string name="panel_update_withdrawn">Панель больше не предлагает это обновление. Проверьте обновления заново.</string>
     <string name="panel_update_installer_unavailable">Не удалось открыть системный установщик</string>
     <string name="panel_update_enter_server">Введите адрес панели для проверки обновлений</string>
     <string name="panel_update_different_panel">Это обновление скачано с другой панели</string>
